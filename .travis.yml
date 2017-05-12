@@ -67,8 +67,8 @@ notifications:
     - 'dashbot: %{repository_name} %{build_id}'
 script:
 - "if [[ -v MAVEN_CHECKS ]]; then\n  ./mvnw install -DskipTests -B -T C1\nfi\n"
-- "if [[ -v TEST_SPECIFIC_MODULES ]]; then\n  ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS\nfi\n"
-- "if [[ -v TEST_OTHER_MODULES ]]; then\n  ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_OTHER_MODULES\nfi\n"
+- "if [[ -v TEST_SPECIFIC_MODULES ]]; then\n  mvn test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS\nfi\n"
+- "if [[ -v TEST_OTHER_MODULES ]]; then\n  mvn test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_OTHER_MODULES\nfi\n"
 - "if [[ -v PRODUCT_TESTS ]]; then\n  presto-product-tests/bin/run_on_docker.sh \\\n    multinode -x quarantine,big_query,storage_formats,profile_specific_tests,tpcds\nfi\n"
 - "if [[ -v PRODUCT_TESTS ]]; then\n  presto-product-tests/bin/run_on_docker.sh \\\n    singlenode-kerberos-hdfs-impersonation -g storage_formats,cli,hdfs_impersonation,authorization\nfi\n"
 - "if [[ -v PRODUCT_TESTS ]]; then\n  presto-product-tests/bin/run_on_docker.sh \\\n    singlenode-ldap -g ldap_cli\nfi\n"
