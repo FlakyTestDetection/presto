@@ -481,6 +481,7 @@ public class PlanPrinter
                         formatOutputs(node.getOutputSymbols()));
             }
 
+            node.getSortExpression().ifPresent(expression -> print(indent + 2, "SortExpression[%s]", expression));
             printStats(indent + 2, node.getId());
             node.getLeft().accept(this, indent + 1);
             node.getRight().accept(this, indent + 1);
@@ -760,7 +761,8 @@ public class PlanPrinter
 
         private Void visitScanFilterAndProjectInfo(
                 PlanNodeId planNodeId,
-                Optional<FilterNode> filterNode, Optional<ProjectNode> projectNode,
+                Optional<FilterNode> filterNode,
+                Optional<ProjectNode> projectNode,
                 int indent)
         {
             checkState(projectNode.isPresent() || filterNode.isPresent());
