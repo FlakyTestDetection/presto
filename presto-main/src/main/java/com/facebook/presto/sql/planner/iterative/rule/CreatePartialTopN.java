@@ -18,38 +18,47 @@ import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
-import com.facebook.presto.sql.planner.plan.LimitNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.TopNNode;
 
 import java.util.Optional;
 
-public class MergeLimitWithTopN
-    implements Rule
+import static com.facebook.presto.sql.planner.plan.TopNNode.Step.FINAL;
+import static com.facebook.presto.sql.planner.plan.TopNNode.Step.PARTIAL;
+import static com.facebook.presto.sql.planner.plan.TopNNode.Step.SINGLE;
+
+public class CreatePartialTopN
+        implements Rule
 {
     @Override
     public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
     {
-        if (!(node instanceof LimitNode)) {
+        if (!(node instanceof TopNNode)) {
             return Optional.empty();
         }
 
-        LimitNode parent = (LimitNode) node;
+        TopNNode single = (TopNNode) node;
 
-        PlanNode source = lookup.resolve(parent.getSource());
-        if (!(source instanceof TopNNode)) {
+        if (!single.getStep().equals(SINGLE)) {
             return Optional.empty();
         }
 
-        TopNNode child = (TopNNode) source;
+        PlanNode source = lookup.resolve(single.getSource());
 
-        return Optional.of(
-                new TopNNode(
-                        parent.getId(),
-                        child.getSource(),
-                        Math.min(parent.getCount(), child.getCount()),
-                        child.getOrderBy(),
-                        child.getOrderings(),
-                        parent.isPartial() ? TopNNode.Step.PARTIAL : TopNNode.Step.SINGLE));
+        TopNNode partial = new TopNNode(
+                idAllocator.getNextId(),
+                source,
+                single.getCount(),
+                single.getOrderBy(),
+                single.getOrderings(),
+                PARTIAL);
+
+        return Optional.of(new TopNNode(
+                idAllocator.getNextId(),
+                partial,
+                single.getCount(),
+                single.getOrderBy(),
+                single.getOrderings(),
+                FINAL));
     }
 }
