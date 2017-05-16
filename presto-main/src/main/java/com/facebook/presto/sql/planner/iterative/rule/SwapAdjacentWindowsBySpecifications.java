@@ -14,7 +14,6 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.sql.planner.DependencyExtractor;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
@@ -27,8 +26,9 @@ import java.util.Iterator;
 import java.util.Optional;
 
 import static com.facebook.presto.sql.planner.iterative.rule.Util.transpose;
+import static com.facebook.presto.sql.planner.optimizations.WindowNodeUtil.dependsOn;
 
-public class SwapAdjacentWindowsByPartitionsOrder
+public class SwapAdjacentWindowsBySpecifications
         implements Rule
 {
     @Override
@@ -53,18 +53,23 @@ public class SwapAdjacentWindowsByPartitionsOrder
         }
     }
 
-    private static boolean dependsOn(WindowNode parent, WindowNode child)
+    private static int compare(WindowNode o1, WindowNode o2)
     {
-        return parent.getPartitionBy().stream().anyMatch(child.getCreatedSymbols()::contains)
-                || parent.getOrderBy().stream().anyMatch(child.getCreatedSymbols()::contains)
-                || parent.getWindowFunctions().values().stream()
-                .map(WindowNode.Function::getFunctionCall)
-                .map(DependencyExtractor::extractUnique)
-                .flatMap(symbols -> symbols.stream())
-                .anyMatch(child.getCreatedSymbols()::contains);
+        int comparison = comparePartitionBy(o1, o2);
+        if (comparison != 0) {
+            return comparison;
+        }
+
+        comparison = compareOrderBy(o1, o2);
+        if (comparison != 0) {
+            return comparison;
+        }
+
+        // If PartitionBy and OrderBy clauses are identical, let's establish an arbitrary order to prevent non-deterministic results of swapping WindowNodes in such a case
+        return o1.getId().toString().compareTo(o2.getId().toString());
     }
 
-    private static int compare(WindowNode o1, WindowNode o2)
+    private static int comparePartitionBy(WindowNode o1, WindowNode o2)
     {
         Iterator<Symbol> iterator1 = o1.getPartitionBy().iterator();
         Iterator<Symbol> iterator2 = o2.getPartitionBy().iterator();
@@ -73,21 +78,48 @@ public class SwapAdjacentWindowsByPartitionsOrder
             Symbol symbol1 = iterator1.next();
             Symbol symbol2 = iterator2.next();
 
-            int comparison = symbol1.compareTo(symbol2);
-            if (comparison != 0) {
-                return comparison;
+            int partitionByComparison = symbol1.compareTo(symbol2);
+            if (partitionByComparison != 0) {
+                return partitionByComparison;
             }
         }
 
         if (iterator1.hasNext()) {
             return 1;
         }
-
         if (iterator2.hasNext()) {
             return -1;
         }
+        return 0;
+    }
 
-        // If both are equal, let's establish an arbitrary order to prevent non-deterministic results of swapping WindowNodes with identical PartitionBy clauses
-        return o1.getId().toString().compareTo(o2.getId().toString());
+    private static int compareOrderBy(WindowNode o1, WindowNode o2)
+    {
+        Iterator<Symbol> iterator1 = o1.getOrderBy().iterator();
+        Iterator<Symbol> iterator2 = o2.getOrderBy().iterator();
+
+        while (iterator1.hasNext() && iterator2.hasNext()) {
+            Symbol symbol1 = iterator1.next();
+            Symbol symbol2 = iterator2.next();
+
+            int orderByComparison = symbol1.compareTo(symbol2);
+            if (orderByComparison != 0) {
+                return orderByComparison;
+            }
+            else {
+                int sortOrderComparison = o1.getOrderings().get(symbol1).compareTo(o2.getOrderings().get(symbol2));
+                if (sortOrderComparison != 0) {
+                    return sortOrderComparison;
+                }
+            }
+        }
+
+        if (iterator1.hasNext()) {
+            return 1;
+        }
+        if (iterator2.hasNext()) {
+            return -1;
+        }
+        return 0;
     }
 }
