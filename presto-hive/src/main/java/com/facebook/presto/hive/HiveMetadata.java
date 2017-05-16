@@ -83,6 +83,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import static com.facebook.presto.hive.HiveBucketing.getHiveBucketHandle;
 import static com.facebook.presto.hive.HiveColumnHandle.BUCKET_COLUMN_NAME;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.HIDDEN;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.PARTITION_KEY;
@@ -121,6 +122,8 @@ import static com.facebook.presto.hive.HiveWriteUtils.initializeSerializer;
 import static com.facebook.presto.hive.HiveWriteUtils.isWritableType;
 import static com.facebook.presto.hive.metastore.HivePrivilegeInfo.toHivePrivilege;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.getHiveSchema;
+import static com.facebook.presto.hive.metastore.MetastoreUtil.getProtectMode;
+import static com.facebook.presto.hive.metastore.MetastoreUtil.verifyOnline;
 import static com.facebook.presto.hive.metastore.PrincipalType.USER;
 import static com.facebook.presto.hive.metastore.SemiTransactionalHiveMetastore.WriteMode.DIRECT_TO_TARGET_EXISTING_DIRECTORY;
 import static com.facebook.presto.hive.metastore.SemiTransactionalHiveMetastore.WriteMode.DIRECT_TO_TARGET_NEW_DIRECTORY;
@@ -223,9 +226,11 @@ public class HiveMetadata
     public HiveTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName)
     {
         requireNonNull(tableName, "tableName is null");
-        if (!metastore.getTable(tableName.getSchemaName(), tableName.getTableName()).isPresent()) {
+        Optional<Table> table = metastore.getTable(tableName.getSchemaName(), tableName.getTableName());
+        if (!table.isPresent()) {
             return null;
         }
+        verifyOnline(tableName, Optional.empty(), getProtectMode(table.get()), table.get().getParameters());
         return new HiveTableHandle(connectorId, tableName.getSchemaName(), tableName.getTableName());
     }
 
@@ -1181,21 +1186,25 @@ public class HiveMetadata
     @Override
     public Optional<ConnectorNewTableLayout> getInsertLayout(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
-        HivePartitionResult hivePartitionResult = partitionManager.getPartitions(metastore, tableHandle, Constraint.alwaysTrue());
-        if (!hivePartitionResult.getBucketHandle().isPresent()) {
+        HiveTableHandle hiveTableHandle = (HiveTableHandle) tableHandle;
+        SchemaTableName tableName = hiveTableHandle.getSchemaTableName();
+        Table table = metastore.getTable(tableName.getSchemaName(), tableName.getTableName())
+                .orElseThrow(() -> new TableNotFoundException(tableName));
+
+        Optional<HiveBucketHandle> hiveBucketHandle = getHiveBucketHandle(connectorId, table);
+        if (!hiveBucketHandle.isPresent()) {
             return Optional.empty();
         }
         if (!bucketWritingEnabled) {
             throw new PrestoException(NOT_SUPPORTED, "Writing to bucketed Hive table has been temporarily disabled");
         }
-        HiveBucketHandle hiveBucketHandle = hivePartitionResult.getBucketHandle().get();
         HivePartitioningHandle partitioningHandle = new HivePartitioningHandle(
                 connectorId,
-                hiveBucketHandle.getBucketCount(),
-                hiveBucketHandle.getColumns().stream()
+                hiveBucketHandle.get().getBucketCount(),
+                hiveBucketHandle.get().getColumns().stream()
                         .map(HiveColumnHandle::getHiveType)
                         .collect(Collectors.toList()));
-        List<String> partitionColumns = hiveBucketHandle.getColumns().stream()
+        List<String> partitionColumns = hiveBucketHandle.get().getColumns().stream()
                 .map(HiveColumnHandle::getName)
                 .collect(Collectors.toList());
         return Optional.of(new ConnectorNewTableLayout(partitioningHandle, partitionColumns));
