@@ -11,13 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.sql.planner.optimizations;
+package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
+import com.facebook.presto.sql.planner.iterative.GroupReference;
+import com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder;
+import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
 import com.facebook.presto.sql.planner.optimizations.joins.JoinGraph;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.planner.plan.JoinNode;
+import com.facebook.presto.sql.planner.plan.JoinNode.EquiJoinClause;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
@@ -29,8 +33,17 @@ import org.testng.annotations.Test;
 
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.function.Function;
 
-import static com.facebook.presto.sql.planner.optimizations.EliminateCrossJoins.isOriginalOrder;
+import static com.facebook.presto.SystemSessionProperties.REORDER_JOINS;
+import static com.facebook.presto.spi.type.BigintType.BIGINT;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.any;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.join;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.node;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.project;
+import static com.facebook.presto.sql.planner.iterative.rule.EliminateCrossJoins.getJoinOrder;
+import static com.facebook.presto.sql.planner.iterative.rule.EliminateCrossJoins.isOriginalOrder;
+import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.facebook.presto.sql.tree.ArithmeticUnaryExpression.Sign.MINUS;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -42,7 +55,57 @@ import static org.testng.AssertJUnit.assertTrue;
 @Test(singleThreaded = true)
 public class TestEliminateCrossJoins
 {
-    PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
+    private final RuleTester tester = new RuleTester();
+    private final PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
+
+    @Test
+    public void testEliminateCrossJoin()
+    {
+        tester.assertThat(new EliminateCrossJoins())
+                .setSystemProperty(REORDER_JOINS, "true")
+                .on(crossJoinAndJoin(INNER))
+                .matches(
+                        project(
+                                join(INNER,
+                                        ImmutableList.of(aliases -> new EquiJoinClause(new Symbol("cySymbol"), new Symbol("bySymbol"))),
+                                        join(INNER,
+                                                ImmutableList.of(aliases -> new EquiJoinClause(new Symbol("axSymbol"), new Symbol("cxSymbol"))),
+                                                any(),
+                                                any()
+                                        ),
+                                        any()
+                                )
+                        )
+                );
+    }
+
+    @Test
+    public void testRetainOutgoingGroupReferences()
+    {
+        tester.assertThat(new EliminateCrossJoins())
+                .setSystemProperty(REORDER_JOINS, "true")
+                .on(crossJoinAndJoin(INNER))
+                .matches(
+                        any(
+                                node(JoinNode.class,
+                                        node(JoinNode.class,
+                                                node(GroupReference.class),
+                                                node(GroupReference.class)
+                                        ),
+                                        node(GroupReference.class)
+                                )
+                        )
+                );
+    }
+
+    @Test
+    public void testDoNotReorderOuterJoin()
+    {
+        tester.assertThat(new EliminateCrossJoins())
+                .setSystemProperty(REORDER_JOINS, "true")
+                .on(crossJoinAndJoin(JoinNode.Type.LEFT))
+                .doesNotFire();
+    }
 
     @Test
     public void testIsOriginalOrder()
@@ -55,8 +118,8 @@ public class TestEliminateCrossJoins
     public void testJoinOrder()
     {
         PlanNode plan =
-                join(
-                        join(
+                joinNode(
+                        joinNode(
                                 values(symbol("a")),
                                 values(symbol("b"))),
                         values(symbol("c")),
@@ -66,7 +129,7 @@ public class TestEliminateCrossJoins
         JoinGraph joinGraph = getOnlyElement(JoinGraph.buildFrom(plan));
 
         assertEquals(
-                EliminateCrossJoins.getJoinOrder(joinGraph),
+                getJoinOrder(joinGraph),
                 ImmutableList.of(0, 2, 1));
     }
 
@@ -74,8 +137,8 @@ public class TestEliminateCrossJoins
     public void testJoinOrderWithRealCrossJoin()
     {
         PlanNode leftPlan =
-                join(
-                        join(
+                joinNode(
+                        joinNode(
                                 values(symbol("a")),
                                 values(symbol("b"))),
                         values(symbol("c")),
@@ -83,20 +146,20 @@ public class TestEliminateCrossJoins
                         symbol("c"), symbol("b"));
 
         PlanNode rightPlan =
-                join(
-                        join(
+                joinNode(
+                        joinNode(
                                 values(symbol("x")),
                                 values(symbol("y"))),
                         values(symbol("z")),
                         symbol("x"), symbol("z"),
                         symbol("z"), symbol("y"));
 
-        PlanNode plan = join(leftPlan, rightPlan);
+        PlanNode plan = joinNode(leftPlan, rightPlan);
 
         JoinGraph joinGraph = getOnlyElement(JoinGraph.buildFrom(plan));
 
         assertEquals(
-                EliminateCrossJoins.getJoinOrder(joinGraph),
+                getJoinOrder(joinGraph),
                 ImmutableList.of(0, 2, 1, 3, 5, 4));
     }
 
@@ -104,8 +167,8 @@ public class TestEliminateCrossJoins
     public void testJoinOrderWithMultipleEdgesBetweenNodes()
     {
         PlanNode plan =
-                join(
-                        join(
+                joinNode(
+                        joinNode(
                                 values(symbol("a")),
                                 values(symbol("b1"), symbol("b2"))),
                         values(symbol("c1"), symbol("c2")),
@@ -116,7 +179,7 @@ public class TestEliminateCrossJoins
         JoinGraph joinGraph = getOnlyElement(JoinGraph.buildFrom(plan));
 
         assertEquals(
-                EliminateCrossJoins.getJoinOrder(joinGraph),
+                getJoinOrder(joinGraph),
                 ImmutableList.of(0, 2, 1));
     }
 
@@ -124,8 +187,8 @@ public class TestEliminateCrossJoins
     public void testDonNotChangeOrderWithoutCrossJoin()
     {
         PlanNode plan =
-                join(
-                        join(
+                joinNode(
+                        joinNode(
                                 values(symbol("a")),
                                 values(symbol("b")),
                                 symbol("a"), symbol("b")),
@@ -135,7 +198,7 @@ public class TestEliminateCrossJoins
         JoinGraph joinGraph = getOnlyElement(JoinGraph.buildFrom(plan));
 
         assertEquals(
-                EliminateCrossJoins.getJoinOrder(joinGraph),
+                getJoinOrder(joinGraph),
                 ImmutableList.of(0, 1, 2));
     }
 
@@ -143,8 +206,8 @@ public class TestEliminateCrossJoins
     public void testDoNotReorderCrossJoins()
     {
         PlanNode plan =
-                join(
-                        join(
+                joinNode(
+                        joinNode(
                                 values(symbol("a")),
                                 values(symbol("b"))),
                         values(symbol("c")),
@@ -153,7 +216,7 @@ public class TestEliminateCrossJoins
         JoinGraph joinGraph = getOnlyElement(JoinGraph.buildFrom(plan));
 
         assertEquals(
-                EliminateCrossJoins.getJoinOrder(joinGraph),
+                getJoinOrder(joinGraph),
                 ImmutableList.of(0, 1, 2));
     }
 
@@ -161,9 +224,9 @@ public class TestEliminateCrossJoins
     public void testGiveUpOnNonIdentityProjections()
     {
         PlanNode plan =
-                join(
-                        project(
-                                join(
+                joinNode(
+                        projectNode(
+                                joinNode(
                                         values(symbol("a1")),
                                         values(symbol("b"))),
                                 symbol("a2"),
@@ -175,7 +238,29 @@ public class TestEliminateCrossJoins
         assertEquals(JoinGraph.buildFrom(plan).size(), 2);
     }
 
-    private PlanNode project(PlanNode source, String symbol, Expression expression)
+    private Function<PlanBuilder, PlanNode> crossJoinAndJoin(JoinNode.Type secondJoinType)
+    {
+        return p -> {
+            Symbol axSymbol = p.symbol("axSymbol", BIGINT);
+            Symbol bySymbol = p.symbol("bySymbol", BIGINT);
+            Symbol cxSymbol = p.symbol("cxSymbol", BIGINT);
+            Symbol cySymbol = p.symbol("cySymbol", BIGINT);
+
+            // (a inner join b) inner join c on c.x = a.x and c.y = b.y
+            return p.join(INNER,
+                    p.join(secondJoinType,
+                            p.values(axSymbol),
+                            p.values(bySymbol)
+                    ),
+                    p.values(cxSymbol, cySymbol),
+                    new EquiJoinClause(cxSymbol, axSymbol),
+                    new EquiJoinClause(cySymbol, bySymbol)
+            );
+        };
+    }
+
+
+    private PlanNode projectNode(PlanNode source, String symbol, Expression expression)
     {
         return new ProjectNode(
                 idAllocator.getNextId(),
@@ -188,7 +273,7 @@ public class TestEliminateCrossJoins
         return name;
     }
 
-    private JoinNode join(PlanNode left, PlanNode right, String... symbols)
+    private JoinNode joinNode(PlanNode left, PlanNode right, String... symbols)
     {
         checkArgument(symbols.length % 2 == 0);
         ImmutableList.Builder<JoinNode.EquiJoinClause> criteria = ImmutableList.builder();
