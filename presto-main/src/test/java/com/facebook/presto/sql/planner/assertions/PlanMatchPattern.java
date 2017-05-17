@@ -302,11 +302,27 @@ public final class PlanMatchPattern
         return node(GroupIdNode.class, source).with(new GroupIdMatcher(groups, ImmutableMap.of(), groupIdAlias));
     }
 
-    public static PlanMatchPattern values(Map<String, Integer> values)
+    public static PlanMatchPattern values(Map<String, Integer> aliasToIndex)
     {
         PlanMatchPattern result = node(ValuesNode.class);
-        values.entrySet().forEach(
-                alias -> result.withAlias(alias.getKey(), new ValuesMatcher(alias.getValue())));
+        aliasToIndex.entrySet().forEach(
+                aliasWithIndex -> result.withAlias(aliasWithIndex.getKey(), new ValuesMatcher(aliasWithIndex.getValue())));
+        return result;
+    }
+
+    public static PlanMatchPattern values(String ... aliases)
+    {
+        return values(ImmutableList.copyOf(aliases));
+    }
+
+    public static PlanMatchPattern values(List<String> aliases)
+    {
+        PlanMatchPattern result = node(ValuesNode.class).withNumberOfOutputColumns(aliases.size());
+        int index = 0;
+        for (String alias : aliases) {
+            result.withAlias(alias, new ValuesMatcher(index));
+            ++index;
+        }
         return result;
     }
 
@@ -361,6 +377,11 @@ public final class PlanMatchPattern
         return this;
     }
 
+    public PlanMatchPattern withAlias(String alias)
+    {
+        return withAlias(Optional.of(alias), new AliasPresent(alias));
+    }
+
     public PlanMatchPattern withAlias(String alias, RvalueMatcher matcher)
     {
         return withAlias(Optional.of(alias), matcher);
@@ -368,7 +389,7 @@ public final class PlanMatchPattern
 
     public PlanMatchPattern withAlias(Optional<String> alias, RvalueMatcher matcher)
     {
-        matchers.add(new Alias(alias, matcher));
+        matchers.add(new AliasMatcher(alias, matcher));
         return this;
     }
 
@@ -383,6 +404,11 @@ public final class PlanMatchPattern
      * in the outputs. This is the case for symbols that are produced by a direct or indirect
      * source of the node you're applying this to.
      */
+    public PlanMatchPattern withExactOutputs(String... expectedAliases)
+    {
+        return withExactOutputs(ImmutableList.copyOf(expectedAliases));
+    }
+
     public PlanMatchPattern withExactOutputs(List<String> expectedAliases)
     {
         matchers.add(new StrictSymbolsMatcher(actualOutputs(), expectedAliases));
@@ -395,10 +421,20 @@ public final class PlanMatchPattern
      * the alias is *not* known when the Matcher is run, and so you need to match by what
      * is being assigned to it.
      */
+    public PlanMatchPattern withExactAssignedOutputs(RvalueMatcher... expectedAliases)
+    {
+        return withExactAssignedOutputs(ImmutableList.copyOf(expectedAliases));
+    }
+
     public PlanMatchPattern withExactAssignedOutputs(Collection<? extends RvalueMatcher> expectedAliases)
     {
         matchers.add(new StrictAssignedSymbolsMatcher(actualOutputs(), expectedAliases));
         return this;
+    }
+
+    public PlanMatchPattern withExactAssignments(RvalueMatcher... expectedAliases)
+    {
+        return withExactAssignments(ImmutableList.copyOf(expectedAliases));
     }
 
     public PlanMatchPattern withExactAssignments(Collection<? extends RvalueMatcher> expectedAliases)
@@ -421,6 +457,11 @@ public final class PlanMatchPattern
     public static ExpressionMatcher expression(String expression)
     {
         return new ExpressionMatcher(expression);
+    }
+
+    public PlanMatchPattern withOutputs(String... aliases)
+    {
+        return withOutputs(ImmutableList.copyOf(aliases));
     }
 
     public PlanMatchPattern withOutputs(List<String> aliases)
