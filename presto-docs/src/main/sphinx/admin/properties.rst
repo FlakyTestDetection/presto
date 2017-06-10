@@ -1,0 +1,98 @@
+====================
+Properties Reference
+====================
+
+This section describes the most important config properties that
+may be used to tune Presto or alter its behavior when required.
+
+General Properties
+------------------
+
+``distributed-joins-enabled``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``boolean``
+    * **Default value:** ``true``
+
+    Use hash distributed joins instead of broadcast joins. Distributed joins
+    require redistributing both tables using a hash of the join key. This can
+    be slower (sometimes substantially) than broadcast joins, but allows much
+    larger joins. Broadcast joins require that the tables on the right side of
+    the join after filtering fit in memory on each node, whereas distributed joins
+    only need to fit in distributed memory across all nodes. This can also be
+    specified on a per-query basis using the ``distributed_join`` session property.
+
+``redistribute-writes``
+^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``boolean``
+    * **Default value:** ``true``
+
+    This property enables redistribution of data before writing. This can
+    eliminate the performance impact of data skew when writing by hashing it
+    across nodes in the cluster. It can be disabled when it is known that the
+    output data set is not skewed in order to avoid the overhead of hashing and
+    redistributing all the data across the network. This can also be specified
+    on a per-query basis using the ``redistribute_writes`` session property.
+
+``resources.reserved-system-memory``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``data size``
+    * **Default value:** ``JVM max memory * 0.4``
+
+    The amount of JVM memory reserved, for accounting purposes, for things
+    that are not directly attributable to or controllable by a user query.
+    For example, output buffers, code caches, etc. This also accounts for
+    memory that is not tracked by the memory tracking system.
+
+    This purpose of this property is to prevent the JVM from running out of
+    memory (OOM). The default value is suitable for smaller JVM heap sizes or
+    clusters with many concurrent queries. If running fewer queries with a
+    large heap, a smaller value may work. Basically, set this value large
+    enough that the JVM does not fail with ``OutOfMemoryError``.
+
+``sink.max-buffer-size``
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``data size``
+    * **Default value:** ``32 MB``
+
+    Output buffer size for task data that is waiting to be pulled by upstream
+    tasks. If the task output is hash partitioned, then the buffer will be
+    shared across all of the partitioned consumers. Increasing this value may
+    improve network throughput for data transferred between stages if the
+    network has high latency or if there are many nodes in the cluster.
+
+
+Tasks managment properties
+--------------------------
+
+``task.max-worker-threads``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``integer``
+    * **Default value:** ``Node CPUs * 2``
+
+    Sets the number of threads used by workers to process splits. Increasing this number
+    can improve throughput if worker CPU utilization is low and all the threads are in use,
+    but will cause increased heap space usage. Setting the value too high may cause a drop
+    in performance due to a context switching. The number of active threads is available
+    via the ``com.facebook.presto.execution.executor.TaskExecutor.RunningSplits`` JMX stat.
+
+
+Node Scheduler Properties
+-------------------------
+
+``node-scheduler.network-topology``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``string``
+    * **Allowed values:** ``legacy``, ``flat``
+    * **Default value:** ``legacy``
+
+    Sets the network topology to use when scheduling splits. ``legacy`` will ignore
+    the topology when scheduling splits. ``flat`` will try to schedule splits on the host
+    where the data is located by reserving 50% of the work queue for local splits.
+    It is recommended to use ``flat`` for clusters where distributed storage runs on
+    the same nodes as Presto workers.
