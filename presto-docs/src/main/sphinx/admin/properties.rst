@@ -52,6 +52,71 @@ General Properties
     large heap, a smaller value may work. Basically, set this value large
     enough that the JVM does not fail with ``OutOfMemoryError``.
 
+
+Exchange Properties
+-------------------
+
+Exchanges transfer data between Presto nodes for different stages of
+a query. Adjusting these properties may help to resolve inter-node
+communication issues or improve network utilization.
+
+``exchange.client-threads``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``integer``
+    * **Minimum value:** ``1``
+    * **Default value:** ``25``
+
+    Number of threads used by exchange clients to fetch data from other Presto
+    nodes. A higher value can improve performance for large clusters or clusters
+    with very high concurrency, but excessively high values may cause a drop
+    in performance due to context switches and additional memory usage.
+
+``exchange.concurrent-request-multiplier``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``integer``
+    * **Minimum value:** ``1``
+    * **Default value:** ``3``
+
+    Multiplier determining the number of concurrent requests relative to
+    available buffer memory. The maximum number of requests is determined
+    using a heuristic of the number of clients that can fit into available
+    buffer space based on average buffer usage per request times this
+    multiplier. For example, with an ``exchange.max-buffer-size`` of ``32 MB``
+    and ``20 MB`` already used and average size per request being ``2MB``,
+    the maximum number of clients is
+    ``multiplier * ((32MB - 20MB) / 2MB) = multiplier * 6``. Tuning this
+    value adjusts the heuristic, which may increase concurrency and improve
+    network utilization.
+
+``exchange.max-buffer-size``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``data size``
+    * **Default value:** ``32 MB``
+
+    Size of buffer in the exchange client that holds data fetched from other
+    nodes before it is processed. A larger buffer can increase network
+    throughput for larger clusters and thus decrease query processing time,
+    but will reduce the amount of memory available for other usages.
+
+``exchange.max-response-size``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``data size``
+    * **Minimum value:** ``1MB``
+    * **Default value:** ``16 MB``
+
+    Maximum size of a response returned from an exchange request. The response
+    will be placed in the exchange client buffer which is shared across all
+    concurrent requests for the exchange.
+
+    Increasing the value may improve network throughput if there is high
+    latency. Decreasing the value may improve query performance for large
+    clusters as it reduces skew due to the exchange client buffer holding
+    responses for more tasks (rather than hold more data from fewer tasks).
+
 ``sink.max-buffer-size``
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -83,6 +148,54 @@ Tasks managment properties
 
 Node Scheduler Properties
 -------------------------
+
+``node-scheduler.max-splits-per-node``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``integer``
+    * **Default value:** ``100``
+
+    The target value for the total number of splits that can be running for
+    each worker node.
+
+    Using a higher value is recommended if queries are submitted in large batches
+    (e.g., running a large group of reports periodically) or for connectors that
+    produce many splits that complete quickly. Increasing this value may improve
+    query latency by ensuring that the workers have enough splits to keep them
+    fully utilized.
+
+    Setting this too high will waste memory and may result in lower performance
+    due to splits not being balanced across workers. Ideally, it should be set
+    such that there is always at least one split waiting to be processed, but
+    not higher.
+
+``node-scheduler.max-pending-splits-per-task``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``integer``
+    * **Default value:** ``10``
+
+    The number of outstanding splits that can be queued for each worker node
+    for a single stage of a query, even when the node is already at the limit for
+    total number of splits. Allowing a minimum number of splits per stage is
+    required to prevent starvation and deadlocks.
+
+    This value must be smaller than ``node-scheduler.max-splits-per-node``,
+    will usually be increased for the same reasons, and has similar drawbacks
+    if set too high.
+
+``node-scheduler.min-candidates``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``integer``
+    * **Minimum value:** ``1``
+    * **Default value:** ``10``
+
+    The minimum number of candidate nodes that will be evaluated by the
+    node scheduler when choosing the target node for a split. Setting
+    this value too low may prevent splits from being properly balanced
+    across all worker nodes. Setting it too high may increase query
+    latency and increase CPU usage on the coordinator.
 
 ``node-scheduler.network-topology``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
