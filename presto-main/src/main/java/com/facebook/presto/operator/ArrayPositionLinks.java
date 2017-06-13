@@ -17,8 +17,6 @@ import com.facebook.presto.spi.Page;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.Arrays;
-import java.util.Optional;
-import java.util.function.Function;
 
 import static io.airlift.slice.SizeOf.sizeOf;
 import static java.util.Objects.requireNonNull;
@@ -27,12 +25,13 @@ public final class ArrayPositionLinks
         implements PositionLinks
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(ArrayPositionLinks.class).instanceSize();
-    public static class Builder implements PositionLinks.Builder
+
+    public static class FactoryBuilder implements PositionLinks.FactoryBuilder
     {
         private final int[] positionLinks;
         private int size;
 
-        private Builder(int size)
+        private FactoryBuilder(int size)
         {
             positionLinks = new int[size];
             Arrays.fill(positionLinks, -1);
@@ -47,7 +46,7 @@ public final class ArrayPositionLinks
         }
 
         @Override
-        public Function<Optional<JoinFilterFunction>, PositionLinks> build()
+        public Factory build()
         {
             return filterFunction -> new ArrayPositionLinks(positionLinks);
         }
@@ -66,9 +65,9 @@ public final class ArrayPositionLinks
         this.positionLinks = requireNonNull(positionLinks, "positionLinks is null");
     }
 
-    public static Builder builder(int size)
+    public static FactoryBuilder builder(int size)
     {
-        return new Builder(size);
+        return new FactoryBuilder(size);
     }
 
     @Override
