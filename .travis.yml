@@ -1,5 +1,98 @@
-after_script:
-- "if [[ -v DEPLOY_S3_ACCESS_KEY ]]; then\n  sudo pip install awscli\n  export AWS_ACCESS_KEY_ID=${DEPLOY_S3_ACCESS_KEY}\n  export AWS_SECRET_ACCESS_KEY=${DEPLOY_S3_SECRET_KEY}\n\n  JOB_ARTIFACTS_URL_PREFIX=s3://${DEPLOY_S3_BUCKET}/${ARTIFACTS_UPLOAD_PATH}/travis_jobs/${TRAVIS_JOB_NUMBER}-run\n  JOB_RUN_ATTEMPTS=$( aws s3 ls ${JOB_ARTIFACTS_URL_PREFIX} | wc -l | tr -d '[:space:]' )\n  JOB_STATUS=$( [ \"$TRAVIS_TEST_RESULT\" == \"0\" ] && echo SUCCESS || echo FAILURE )\n\n  mkdir -p /tmp/job_artifacts/\n  rsync -av -m \\\n    --include='**/' \\\n    --include='**/surefire-reports/**.xml' \\\n    --include='**/surefire-reports/emailable-report.html' \\\n    --exclude='*' \\\n    . /tmp/job_artifacts/\n  wget https://api.travis-ci.org/jobs/${TRAVIS_JOB_ID}/log.txt?deansi=true -O /tmp/job_artifacts/log.txt\n\n  aws s3 sync /tmp/job_artifacts ${JOB_ARTIFACTS_URL_PREFIX}_$((JOB_RUN_ATTEMPTS + 1))-${JOB_STATUS}\nfi\n"
+language: java
+
+env:
+  global:
+    - MAVEN_OPTS="-Xmx512M -XX:+ExitOnOutOfMemoryError"
+    - MAVEN_SKIP_CHECKS_AND_DOCS="-Dair.check.skip-all=true -Dmaven.javadoc.skip=true"
+    - MAVEN_FAST_INSTALL="-DskipTests $MAVEN_SKIP_CHECKS_AND_DOCS -B -q -T C1"
+    - ARTIFACTS_UPLOAD_PATH=travis_build_artifacts/${TRAVIS_REPO_SLUG}/${TRAVIS_BRANCH}/${TRAVIS_BUILD_NUMBER}
+    - TEST_FLAGS=""
+  matrix:
+    - MAVEN_CHECKS=true
+    - TEST_SPECIFIC_MODULES=presto-tests
+    - TEST_SPECIFIC_MODULES=presto-tests TEST_FLAGS="-P ci-only"
+    - TEST_SPECIFIC_MODULES=presto-raptor
+    - TEST_SPECIFIC_MODULES=presto-accumulo
+    - TEST_SPECIFIC_MODULES=presto-cassandra
+    - TEST_SPECIFIC_MODULES=presto-hive
+    - TEST_OTHER_MODULES=!presto-tests,!presto-raptor,!presto-accumulo,!presto-cassandra,!presto-hive,!presto-docs,!presto-server,!presto-server-rpm
+    - PRODUCT_TESTS=true
+    - HIVE_TESTS=true
+
+sudo: required
+dist: trusty
+addons:
+  apt:
+    packages:
+      - oracle-java8-installer
+
+cache:
+  directories:
+    - $HOME/.m2/repository
+
+services:
+  - docker
+
+install:
+  - ./mvnw -v
+  - |
+    if [[ -v TEST_SPECIFIC_MODULES ]]; then
+      ./mvnw install $MAVEN_FAST_INSTALL -pl $TEST_SPECIFIC_MODULES -am
+    fi
+  - |
+    if [[ -v TEST_OTHER_MODULES ]]; then
+      ./mvnw install $MAVEN_FAST_INSTALL -pl '!presto-docs,!presto-server,!presto-server-rpm'
+    fi
+  - |
+    if [[ -v PRODUCT_TESTS ]]; then
+      ./mvnw install $MAVEN_FAST_INSTALL -pl '!presto-docs,!presto-server-rpm'
+    fi
+  - |
+    if [[ -v HIVE_TESTS ]]; then
+      ./mvnw install $MAVEN_FAST_INSTALL -pl presto-hive-hadoop2 -am
+    fi
+
+script:
+  - |
+    if [[ -v MAVEN_CHECKS ]]; then
+      ./mvnw install -DskipTests -B -T C1
+    fi
+  - |
+    if [[ -v TEST_SPECIFIC_MODULES ]]; then
+      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS
+    fi
+  - |
+    if [[ -v TEST_OTHER_MODULES ]]; then
+      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_OTHER_MODULES
+    fi
+  - |
+    if [[ -v PRODUCT_TESTS ]]; then
+      presto-product-tests/bin/run_on_docker.sh \
+        multinode -x quarantine,big_query,storage_formats,profile_specific_tests,tpcds
+    fi
+  - |
+    if [[ -v PRODUCT_TESTS ]]; then
+      presto-product-tests/bin/run_on_docker.sh \
+        singlenode-kerberos-hdfs-impersonation -g storage_formats,cli,hdfs_impersonation,authorization
+    fi
+  - |
+    if [[ -v PRODUCT_TESTS ]]; then
+      presto-product-tests/bin/run_on_docker.sh \
+        singlenode-ldap -g ldap_cli
+    fi
+# SQL server image sporadically hangs during the startup
+# TODO: Uncomment it once issue is fixed
+# https://github.com/Microsoft/mssql-docker/issues/76
+#  - |
+#    if [[ -v PRODUCT_TESTS ]]; then
+#      presto-product-tests/bin/run_on_docker.sh \
+#        singlenode-sqlserver -g sqlserver
+#    fi
+  - |
+    if [[ -v HIVE_TESTS ]]; then
+      presto-hive-hadoop2/bin/run_on_docker.sh
+    fi
+
 before_cache:
 - rm -rf $HOME/.m2/repository/com/facebook
 before_deploy:
@@ -17,9 +110,6 @@ before_install:
 - unzip -qq apache-maven-3.3.9.zip
 - export M2_HOME=$PWD/apache-maven-3.3.9
 - export PATH=$M2_HOME/bin:$PATH
-cache:
-  directories:
-  - $HOME/.m2/repository
 deploy:
   true:
     all_branches: true
@@ -32,32 +122,6 @@ deploy:
   secret_access_key: ${DEPLOY_S3_SECRET_KEY}
   skip_cleanup: true
   upload-dir: ${ARTIFACTS_UPLOAD_PATH}
-dist: trusty
-env:
-  global:
-  - MAVEN_OPTS="-Xmx512M -XX:+ExitOnOutOfMemoryError"
-  - MAVEN_SKIP_CHECKS_AND_DOCS="-Dair.check.skip-all=true -Dmaven.javadoc.skip=true"
-  - MAVEN_FAST_INSTALL="-DskipTests $MAVEN_SKIP_CHECKS_AND_DOCS -B -q -T C1"
-  - ARTIFACTS_UPLOAD_PATH=travis_build_artifacts/${TRAVIS_REPO_SLUG}/${TRAVIS_BRANCH}/${TRAVIS_BUILD_NUMBER}
-  - TEST_FLAGS=""
-  matrix:
-  - MAVEN_CHECKS=true
-  - TEST_SPECIFIC_MODULES=presto-tests
-  - TEST_SPECIFIC_MODULES=presto-tests TEST_FLAGS="-P ci-only"
-  - TEST_SPECIFIC_MODULES=presto-raptor
-  - TEST_SPECIFIC_MODULES=presto-accumulo
-  - TEST_SPECIFIC_MODULES=presto-cassandra
-  - TEST_SPECIFIC_MODULES=presto-hive
-  - TEST_OTHER_MODULES=!presto-tests,!presto-raptor,!presto-accumulo,!presto-cassandra,!presto-hive,!presto-docs,!presto-server,!presto-server-rpm
-  - PRODUCT_TESTS=true
-  - HIVE_TESTS=true
-install:
-- ./mvnw -v
-- "if [[ -v TEST_SPECIFIC_MODULES ]]; then\n  mvn install $MAVEN_FAST_INSTALL -pl $TEST_SPECIFIC_MODULES -am\nfi\n"
-- "if [[ -v TEST_OTHER_MODULES ]]; then\n  mvn install $MAVEN_FAST_INSTALL -pl '!presto-docs,!presto-server,!presto-server-rpm'\nfi\n"
-- "if [[ -v PRODUCT_TESTS ]]; then\n  mvn install $MAVEN_FAST_INSTALL -pl '!presto-docs,!presto-server-rpm'\nfi\n"
-- "if [[ -v HIVE_TESTS ]]; then\n  mvn install $MAVEN_FAST_INSTALL -pl presto-hive-hadoop2 -am\nfi\n"
-language: java
 notifications:
   email: false
   slack:
@@ -65,14 +129,3 @@ notifications:
     template:
     - Build <%{build_url}|#%{build_number}> (<%{compare_url}|%{commit}>) of %{repository}@%{branch} by %{author} %{result} in %{duration}
     - 'dashbot: %{repository_name} %{build_id}'
-script:
-- "if [[ -v MAVEN_CHECKS ]]; then\n  ./mvnw install -DskipTests -B -T C1\nfi\n"
-- "if [[ -v TEST_SPECIFIC_MODULES ]]; then\n  mvn test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS\nfi\n"
-- "if [[ -v TEST_OTHER_MODULES ]]; then\n  mvn test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_OTHER_MODULES\nfi\n"
-- "if [[ -v PRODUCT_TESTS ]]; then\n  presto-product-tests/bin/run_on_docker.sh \\\n    multinode -x quarantine,big_query,storage_formats,profile_specific_tests,tpcds\nfi\n"
-- "if [[ -v PRODUCT_TESTS ]]; then\n  presto-product-tests/bin/run_on_docker.sh \\\n    singlenode-kerberos-hdfs-impersonation -g storage_formats,cli,hdfs_impersonation,authorization\nfi\n"
-- "if [[ -v PRODUCT_TESTS ]]; then\n  presto-product-tests/bin/run_on_docker.sh \\\n    singlenode-ldap -g ldap_cli\nfi\n"
-- "if [[ -v HIVE_TESTS ]]; then\n  presto-hive-hadoop2/bin/run_on_docker.sh\nfi\n"
-services:
-- docker
-sudo: required
