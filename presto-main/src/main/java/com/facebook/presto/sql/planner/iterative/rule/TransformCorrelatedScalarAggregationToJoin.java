@@ -13,12 +13,9 @@
  */
 package com.facebook.presto.sql.planner.iterative.rule;
 
-import com.facebook.presto.Session;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.metadata.FunctionRegistry;
-import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
-import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.iterative.Lookup;
-import com.facebook.presto.sql.planner.iterative.Pattern;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.optimizations.ScalarAggregationToJoinRewriter;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
@@ -30,14 +27,14 @@ import com.facebook.presto.sql.planner.plan.ProjectNode;
 import java.util.Optional;
 
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
-import static com.facebook.presto.sql.planner.optimizations.Predicates.isInstanceOfAny;
-import static com.facebook.presto.sql.planner.optimizations.ScalarQueryUtil.isScalar;
+import static com.facebook.presto.sql.planner.optimizations.QueryCardinalityUtil.isScalar;
+import static com.facebook.presto.util.MorePredicates.isInstanceOfAny;
 import static java.util.Objects.requireNonNull;
 
 public class TransformCorrelatedScalarAggregationToJoin
         implements Rule
 {
-    private static final Pattern PATTERN = Pattern.node(LateralJoinNode.class);
+    private static final Pattern PATTERN = Pattern.typeOf(LateralJoinNode.class);
 
     @Override
     public Pattern getPattern()
@@ -53,25 +50,25 @@ public class TransformCorrelatedScalarAggregationToJoin
     }
 
     @Override
-    public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
+    public Optional<PlanNode> apply(PlanNode node, Context context)
     {
         if (!(node instanceof LateralJoinNode)) {
             return Optional.empty();
         }
 
         LateralJoinNode lateralJoinNode = (LateralJoinNode) node;
-        PlanNode subquery = lookup.resolve(lateralJoinNode.getSubquery());
+        PlanNode subquery = context.getLookup().resolve(lateralJoinNode.getSubquery());
 
-        if (lateralJoinNode.getCorrelation().isEmpty() || !(isScalar(subquery, lookup))) {
+        if (lateralJoinNode.getCorrelation().isEmpty() || !(isScalar(subquery, context.getLookup()))) {
             return Optional.empty();
         }
 
-        Optional<AggregationNode> aggregation = findAggregation(subquery, lookup);
+        Optional<AggregationNode> aggregation = findAggregation(subquery, context.getLookup());
         if (!(aggregation.isPresent() && aggregation.get().getGroupingKeys().isEmpty())) {
             return Optional.empty();
         }
 
-        ScalarAggregationToJoinRewriter rewriter = new ScalarAggregationToJoinRewriter(functionRegistry, symbolAllocator, idAllocator, lookup);
+        ScalarAggregationToJoinRewriter rewriter = new ScalarAggregationToJoinRewriter(functionRegistry, context.getSymbolAllocator(), context.getIdAllocator(), context.getLookup());
 
         PlanNode rewrittenNode = rewriter.rewriteScalarAggregation(lateralJoinNode, aggregation.get());
 
