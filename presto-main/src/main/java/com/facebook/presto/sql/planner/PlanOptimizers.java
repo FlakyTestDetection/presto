@@ -53,6 +53,8 @@ import com.facebook.presto.sql.planner.iterative.rule.PushAggregationThroughOute
 import com.facebook.presto.sql.planner.iterative.rule.PushLimitThroughMarkDistinct;
 import com.facebook.presto.sql.planner.iterative.rule.PushLimitThroughProject;
 import com.facebook.presto.sql.planner.iterative.rule.PushLimitThroughSemiJoin;
+import com.facebook.presto.sql.planner.iterative.rule.PushPartialAggregationThroughExchange;
+import com.facebook.presto.sql.planner.iterative.rule.PushPartialAggregationThroughJoin;
 import com.facebook.presto.sql.planner.iterative.rule.PushProjectionThroughExchange;
 import com.facebook.presto.sql.planner.iterative.rule.PushProjectionThroughUnion;
 import com.facebook.presto.sql.planner.iterative.rule.PushTableWriteThroughUnion;
@@ -80,7 +82,6 @@ import com.facebook.presto.sql.planner.optimizations.LimitPushDown;
 import com.facebook.presto.sql.planner.optimizations.MetadataDeleteOptimizer;
 import com.facebook.presto.sql.planner.optimizations.MetadataQueryOptimizer;
 import com.facebook.presto.sql.planner.optimizations.OptimizeMixedDistinctAggregations;
-import com.facebook.presto.sql.planner.optimizations.PartialAggregationPushDown;
 import com.facebook.presto.sql.planner.optimizations.PickLayout;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.optimizations.PredicatePushDown;
@@ -326,7 +327,12 @@ public class PlanOptimizers
 
         // Optimizers above this do not need to care about aggregations with the type other than SINGLE
         // This optimizer must be run after all exchange-related optimizers
-        builder.add(new PartialAggregationPushDown(metadata.getFunctionRegistry()));
+        builder.add(new IterativeOptimizer(
+                stats,
+                ImmutableSet.of(
+                        new PushPartialAggregationThroughJoin(),
+                        new PushPartialAggregationThroughExchange(metadata.getFunctionRegistry()),
+                        new PruneJoinColumns())));
         builder.add(new IterativeOptimizer(
                 stats,
                 ImmutableSet.of(
