@@ -18,6 +18,8 @@ import io.airlift.slice.Slice;
 import java.util.List;
 import java.util.Optional;
 
+import static com.facebook.presto.orc.metadata.statistics.StringStatistics.STRING_VALUE_BYTES_OVERHEAD;
+import static com.google.common.base.Verify.verify;
 import static java.util.Objects.requireNonNull;
 
 public class StringStatisticsBuilder
@@ -26,6 +28,7 @@ public class StringStatisticsBuilder
     private long nonNullValueCount;
     private Slice minimum;
     private Slice maximum;
+    private long sum;
 
     public long getNonNullValueCount()
     {
@@ -38,7 +41,12 @@ public class StringStatisticsBuilder
         requireNonNull(value, "value is null");
 
         nonNullValueCount++;
+        sum += value.length();
+        updateMinMax(value);
+    }
 
+    private void updateMinMax(Slice value)
+    {
         if (minimum == null) {
             minimum = value;
             maximum = value;
@@ -58,8 +66,9 @@ public class StringStatisticsBuilder
         requireNonNull(value.getMax(), "value.getMax() is null");
 
         nonNullValueCount += valueCount;
-        addValue(value.getMin());
-        addValue(value.getMax());
+        sum += value.getSum();
+        updateMinMax(value.getMin());
+        updateMinMax(value.getMax());
     }
 
     private Optional<StringStatistics> buildStringStatistics()
@@ -67,18 +76,22 @@ public class StringStatisticsBuilder
         if (nonNullValueCount == 0) {
             return Optional.empty();
         }
-        return Optional.of(new StringStatistics(minimum, maximum));
+        return Optional.of(new StringStatistics(minimum, maximum, sum));
     }
 
     @Override
     public ColumnStatistics buildColumnStatistics()
     {
+        Optional<StringStatistics> stringStatistics = buildStringStatistics();
+        stringStatistics.ifPresent(s -> verify(nonNullValueCount > 0));
         return new ColumnStatistics(
                 nonNullValueCount,
+                stringStatistics.map(s -> STRING_VALUE_BYTES_OVERHEAD + sum / nonNullValueCount).orElse(0L),
                 null,
                 null,
                 null,
-                buildStringStatistics().orElse(null),
+                stringStatistics.orElse(null),
+                null,
                 null,
                 null,
                 null);
