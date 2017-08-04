@@ -62,6 +62,7 @@ import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
+import com.facebook.presto.sql.tree.NullLiteral;
 import com.facebook.presto.testing.TestingMetadata.TestingTableHandle;
 import com.google.common.base.Functions;
 import com.google.common.collect.ImmutableList;
@@ -278,12 +279,14 @@ public class PlanBuilder
 
     public ApplyNode apply(Assignments subqueryAssignments, List<Symbol> correlation, PlanNode input, PlanNode subquery)
     {
-        return new ApplyNode(idAllocator.getNextId(), input, subquery, subqueryAssignments, correlation);
+        NullLiteral originSubquery = new NullLiteral(); // does not matter for tests
+        return new ApplyNode(idAllocator.getNextId(), input, subquery, subqueryAssignments, correlation, originSubquery);
     }
 
     public LateralJoinNode lateral(List<Symbol> correlation, PlanNode input, PlanNode subquery)
     {
-        return new LateralJoinNode(idAllocator.getNextId(), input, subquery, correlation, LateralJoinNode.Type.INNER);
+        NullLiteral originSubquery = new NullLiteral(); // does not matter for tests
+        return new LateralJoinNode(idAllocator.getNextId(), input, subquery, correlation, LateralJoinNode.Type.INNER, originSubquery);
     }
 
     public TableScanNode tableScan(List<Symbol> symbols, Map<Symbol, ColumnHandle> assignments)
