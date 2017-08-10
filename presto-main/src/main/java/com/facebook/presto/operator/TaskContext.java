@@ -19,6 +19,7 @@ import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskState;
 import com.facebook.presto.execution.TaskStateMachine;
 import com.facebook.presto.memory.QueryContext;
+import com.facebook.presto.memory.QueryContextVisitor;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.AtomicDouble;
@@ -44,6 +45,7 @@ import static io.airlift.units.DataSize.succinctBytes;
 import static java.lang.Math.max;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
+import static java.util.stream.Collectors.toList;
 
 @ThreadSafe
 public class TaskContext
@@ -55,6 +57,7 @@ public class TaskContext
 
     private final AtomicLong memoryReservation = new AtomicLong();
     private final AtomicLong systemMemoryReservation = new AtomicLong();
+    private final AtomicLong revocableMemoryReservation = new AtomicLong();
 
     private final long createNanos = System.nanoTime();
 
@@ -157,6 +160,15 @@ public class TaskContext
         return future;
     }
 
+    public synchronized ListenableFuture<?> reserveRevocableMemory(long bytes)
+    {
+        checkArgument(bytes >= 0, "bytes is negative");
+
+        ListenableFuture<?> future = queryContext.reserveRevocableMemory(bytes);
+        revocableMemoryReservation.getAndAdd(bytes);
+        return future;
+    }
+
     public synchronized ListenableFuture<?> reserveSystemMemory(long bytes)
     {
         checkArgument(bytes >= 0, "bytes is negative");
@@ -190,10 +202,18 @@ public class TaskContext
         queryContext.freeMemory(bytes);
     }
 
+    public synchronized void freeRevocableMemory(long bytes)
+    {
+        checkArgument(bytes >= 0, "bytes is negative");
+        checkArgument(bytes <= revocableMemoryReservation.get(), "tried to free more revocable memory than is reserved");
+        revocableMemoryReservation.getAndAdd(-bytes);
+        queryContext.freeRevocableMemory(bytes);
+    }
+
     public synchronized void freeSystemMemory(long bytes)
     {
         checkArgument(bytes >= 0, "bytes is negative");
-        checkArgument(bytes <= systemMemoryReservation.get(), "tried to free more memory than is reserved");
+        checkArgument(bytes <= systemMemoryReservation.get(), "tried to free more system memory than is reserved");
         systemMemoryReservation.getAndAdd(-bytes);
         queryContext.freeSystemMemory(bytes);
     }
@@ -383,6 +403,7 @@ public class TaskContext
                 completedDrivers,
                 cumulativeMemory.get(),
                 succinctBytes(memoryReservation.get()),
+                succinctBytes(revocableMemoryReservation.get()),
                 succinctBytes(systemMemoryReservation.get()),
                 new Duration(totalScheduledTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 new Duration(totalCpuTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
@@ -397,5 +418,17 @@ public class TaskContext
                 succinctBytes(outputDataSize),
                 outputPositions,
                 pipelineStats);
+    }
+
+    public <C, R> R accept(QueryContextVisitor<C, R> visitor, C context)
+    {
+        return visitor.visitTaskContext(this, context);
+    }
+
+    public <C, R> List<R> acceptChildren(QueryContextVisitor<C, R> visitor, C context)
+    {
+        return pipelineContexts.stream()
+                .map(pipelineContext -> pipelineContext.accept(visitor, context))
+                .collect(toList());
     }
 }
