@@ -1273,8 +1273,8 @@ public abstract class AbstractTestQueries
     @Test
     public void testAggregationWithLimit()
     {
-        MaterializedResult actual = computeActual("SELECT custkey, SUM(totalprice) FROM ORDERS GROUP BY custkey LIMIT 10");
-        MaterializedResult all = computeExpected("SELECT custkey, SUM(totalprice) FROM ORDERS GROUP BY custkey", actual.getTypes());
+        MaterializedResult actual = computeActual("SELECT custkey, SUM(CAST(totalprice * 100 AS BIGINT)) FROM ORDERS GROUP BY custkey LIMIT 10");
+        MaterializedResult all = computeExpected("SELECT custkey, SUM(CAST(totalprice * 100 AS BIGINT)) FROM ORDERS GROUP BY custkey", actual.getTypes());
 
         assertEquals(actual.getMaterializedRows().size(), 10);
         assertContains(all, actual);
@@ -8973,5 +8973,8 @@ public abstract class AbstractTestQueries
         assertQuery(
                 "SELECT COUNT(*) FROM (SELECT SUM(orderkey) FROM orders group by custkey)",
                 "VALUES 1000");
+        assertQuery("SELECT count(*) FROM (VALUES 2) t(a) GROUP BY a", "VALUES 1");
+        assertQuery("SELECT a, count(*) FROM (VALUES 2) t(a) GROUP BY a", "VALUES (2, 1)");
+        assertQuery("SELECT count(*) FROM (VALUES 2) t(a) GROUP BY a+1", "VALUES 1");
     }
 }

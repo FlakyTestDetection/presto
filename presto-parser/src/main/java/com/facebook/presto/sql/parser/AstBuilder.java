@@ -13,8 +13,8 @@
  */
 package com.facebook.presto.sql.parser;
 
-import com.facebook.presto.sql.parser.SqlBaseParser.TablePropertiesContext;
-import com.facebook.presto.sql.parser.SqlBaseParser.TablePropertyContext;
+import com.facebook.presto.sql.parser.SqlBaseParser.PropertiesContext;
+import com.facebook.presto.sql.parser.SqlBaseParser.PropertyContext;
 import com.facebook.presto.sql.tree.AddColumn;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.AllColumns;
@@ -209,7 +209,7 @@ class AstBuilder
                 getLocation(context),
                 getQualifiedName(context.qualifiedName()),
                 context.EXISTS() != null,
-                processTableProperties(context.tableProperties()));
+                processProperties(context.properties()));
     }
 
     @Override
@@ -249,7 +249,7 @@ class AstBuilder
                 getQualifiedName(context.qualifiedName()),
                 (Query) visit(context.query()),
                 context.EXISTS() != null,
-                processTableProperties(context.tableProperties()),
+                processProperties(context.properties()),
                 context.NO() == null,
                 columnAliases,
                 comment);
@@ -262,15 +262,21 @@ class AstBuilder
         if (context.COMMENT() != null) {
             comment = Optional.of(((StringLiteral) visit(context.string())).getValue());
         }
-        return new CreateTable(getLocation(context), getQualifiedName(context.qualifiedName()), visit(context.tableElement(), TableElement.class), context.EXISTS() != null, processTableProperties(context.tableProperties()), comment);
+        return new CreateTable(
+                getLocation(context),
+                getQualifiedName(context.qualifiedName()),
+                visit(context.tableElement(), TableElement.class),
+                context.EXISTS() != null,
+                processProperties(context.properties()),
+                comment);
     }
 
-    private Map<String, Expression> processTableProperties(TablePropertiesContext tablePropertiesContext)
+    private Map<String, Expression> processProperties(PropertiesContext propertiesContext)
     {
         ImmutableMap.Builder<String, Expression> properties = ImmutableMap.builder();
-        if (tablePropertiesContext != null) {
-            for (TablePropertyContext tablePropertyContext : tablePropertiesContext.tableProperty()) {
-                properties.put(tablePropertyContext.identifier().getText(), (Expression) visit(tablePropertyContext.expression()));
+        if (propertiesContext != null) {
+            for (PropertyContext propertyContext : propertiesContext.property()) {
+                properties.put(propertyContext.identifier().getText(), (Expression) visit(propertyContext.expression()));
             }
         }
         return properties.build();
@@ -1313,6 +1319,7 @@ class AstBuilder
                     (Expression) visit(context.expression(1)),
                     elseExpression);
         }
+
         if (name.toString().equalsIgnoreCase("nullif")) {
             check(context.expression().size() == 2, "Invalid number of arguments for 'nullif' function", context);
             check(!window.isPresent(), "OVER clause not valid for 'nullif' function", context);
@@ -1323,12 +1330,15 @@ class AstBuilder
                     (Expression) visit(context.expression(0)),
                     (Expression) visit(context.expression(1)));
         }
+
         if (name.toString().equalsIgnoreCase("coalesce")) {
+            check(context.expression().size() >= 2, "The 'coalesce' function must have at least two arguments", context);
             check(!window.isPresent(), "OVER clause not valid for 'coalesce' function", context);
             check(!distinct, "DISTINCT not valid for 'coalesce' function", context);
 
             return new CoalesceExpression(getLocation(context), visit(context.expression(), Expression.class));
         }
+
         if (name.toString().equalsIgnoreCase("try")) {
             check(context.expression().size() == 1, "The 'try' function must have exactly one argument", context);
             check(!window.isPresent(), "OVER clause not valid for 'try' function", context);
@@ -1336,6 +1346,7 @@ class AstBuilder
 
             return new TryExpression(getLocation(context), (Expression) visit(getOnlyElement(context.expression())));
         }
+
         if (name.toString().equalsIgnoreCase("$internal$bind")) {
             check(context.expression().size() >= 1, "The '$internal$bind' function must have at least one arguments", context);
             check(!window.isPresent(), "OVER clause not valid for '$internal$bind' function", context);
