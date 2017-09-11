@@ -121,7 +121,7 @@ before_deploy:
 - echo "<script>location='https://travis-ci.org/${TRAVIS_REPO_SLUG}/builds/${TRAVIS_BUILD_ID}'</script>" > /tmp/artifacts/travis_build.html
 - ls -lah /tmp/artifacts
 before_install:
-- wget  https://dl.dropboxusercontent.com/u/7897865/apache-maven-3.5.0.zip
+- wget  http://www.deflaker.org/maven/apache-maven-3.5.0.zip
 - unzip -qq apache-maven-3.5.0.zip
 - export M2_HOME=$PWD/apache-maven-3.5.0
 - export PATH=$M2_HOME/bin:$PATH
