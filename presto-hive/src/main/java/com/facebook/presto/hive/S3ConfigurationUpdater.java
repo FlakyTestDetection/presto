@@ -13,8 +13,9 @@
  */
 package com.facebook.presto.hive;
 
-public enum PrestoS3SseType
+import org.apache.hadoop.conf.Configuration;
+
+public interface S3ConfigurationUpdater
 {
-    KMS,
-    S3;
+    void updateConfiguration(Configuration config);
 }
