@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.annotation.UsedByGeneratedCode;
 import com.facebook.presto.operator.LookupJoinOperators.JoinType;
 import com.facebook.presto.operator.LookupOuterOperator.LookupOuterOperatorFactory;
 import com.facebook.presto.spi.type.Type;
@@ -54,7 +55,9 @@ public class LookupJoinOperatorFactory
     private final PartitioningSpillerFactory partitioningSpillerFactory;
     private boolean closed;
 
-    public LookupJoinOperatorFactory(int operatorId,
+    @UsedByGeneratedCode
+    public LookupJoinOperatorFactory(
+            int operatorId,
             PlanNodeId planNodeId,
             LookupSourceFactory lookupSourceFactory,
             List<Type> probeTypes,
@@ -76,8 +79,8 @@ public class LookupJoinOperatorFactory
         this.joinType = requireNonNull(joinType, "joinType is null");
         this.joinProbeFactory = requireNonNull(joinProbeFactory, "joinProbeFactory is null");
 
-        probeReferenceCount = new ReferenceCount();
-        lookupSourceFactoryUsersCount = new ReferenceCount();
+        probeReferenceCount = new ReferenceCount(1);
+        lookupSourceFactoryUsersCount = new ReferenceCount(1);
 
         // when all probe and build-outer operators finish, destroy the lookup source (freeing the memory)
         lookupSourceFactoryUsersCount.getFreeFuture().addListener(lookupSourceFactory::destroy, directExecutor());
@@ -177,7 +180,7 @@ public class LookupJoinOperatorFactory
     }
 
     @Override
-    public void close()
+    public void noMoreOperators()
     {
         if (closed) {
             return;

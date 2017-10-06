@@ -17,7 +17,7 @@ import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.TableLayout;
-import com.facebook.presto.metadata.TableLayout.NodePartitioning;
+import com.facebook.presto.metadata.TableLayout.TablePartitioning;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConstantProperty;
 import com.facebook.presto.spi.GroupingProperty;
@@ -640,22 +640,22 @@ class PropertyDerivations
 
         private Global deriveGlobalProperties(TableLayout layout, Map<ColumnHandle, Symbol> assignments, Map<ColumnHandle, NullableValue> constants)
         {
-            Optional<List<Symbol>> partitioning = layout.getPartitioningColumns()
+            Optional<List<Symbol>> streamPartitioning = layout.getStreamPartitioningColumns()
                     .flatMap(columns -> translateToNonConstantSymbols(columns, assignments, constants));
 
-            if (planWithTableNodePartitioning(session) && layout.getNodePartitioning().isPresent()) {
-                NodePartitioning nodePartitioning = layout.getNodePartitioning().get();
-                if (assignments.keySet().containsAll(nodePartitioning.getPartitioningColumns())) {
-                    List<Symbol> arguments = nodePartitioning.getPartitioningColumns().stream()
+            if (planWithTableNodePartitioning(session) && layout.getTablePartitioning().isPresent()) {
+                TablePartitioning tablePartitioning = layout.getTablePartitioning().get();
+                if (assignments.keySet().containsAll(tablePartitioning.getPartitioningColumns())) {
+                    List<Symbol> arguments = tablePartitioning.getPartitioningColumns().stream()
                             .map(assignments::get)
                             .collect(toImmutableList());
 
-                    return partitionedOn(nodePartitioning.getPartitioningHandle(), arguments, partitioning);
+                    return partitionedOn(tablePartitioning.getPartitioningHandle(), arguments, streamPartitioning);
                 }
             }
 
-            if (partitioning.isPresent()) {
-                return streamPartitionedOn(partitioning.get());
+            if (streamPartitioning.isPresent()) {
+                return streamPartitionedOn(streamPartitioning.get());
             }
             return arbitraryPartition();
         }
