@@ -10,7 +10,7 @@
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.186-SNAPSHOT</version>
+    <version>0.187-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -1073,6 +1073,14 @@
                                 <resolvedVersion>3.22.0-GA</resolvedVersion>
                             </exception>
                         </exceptions>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-release-plugin</artifactId>
+                    <configuration>
+                        <preparationGoals>clean verify -DskipTests</preparationGoals>
                     </configuration>
                 </plugin>
 
