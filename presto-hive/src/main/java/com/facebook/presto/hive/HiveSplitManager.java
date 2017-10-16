@@ -33,6 +33,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import io.airlift.concurrent.BoundedExecutor;
+import io.airlift.units.DataSize;
 import org.apache.hadoop.hive.metastore.ProtectMode;
 
 import javax.inject.Inject;
@@ -58,6 +59,7 @@ import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Iterables.concat;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Iterables.transform;
+import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.lang.Math.min;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -164,6 +166,7 @@ public class HiveSplitManager
                 connectorId,
                 table.get(),
                 hivePartitions,
+                layout.getCompactEffectivePredicate(),
                 bucketHandle,
                 buckets,
                 session,
@@ -175,7 +178,15 @@ public class HiveSplitManager
                 maxInitialSplits,
                 recursiveDfsWalkerEnabled);
 
-        HiveSplitSource splitSource = new HiveSplitSource(maxOutstandingSplits, hiveSplitLoader, executor);
+        HiveSplitSource splitSource = new HiveSplitSource(
+                connectorId,
+                table.get().getDatabaseName(),
+                table.get().getTableName(),
+                layout.getCompactEffectivePredicate(),
+                maxOutstandingSplits,
+                new DataSize(32, MEGABYTE),
+                hiveSplitLoader,
+                executor);
         hiveSplitLoader.start(splitSource);
 
         return splitSource;
@@ -240,7 +251,7 @@ public class HiveSplitManager
                 if ((tableColumns == null) || (partitionColumns == null)) {
                     throw new PrestoException(HIVE_INVALID_METADATA, format("Table '%s' or partition '%s' has null columns", tableName, partName));
                 }
-                ImmutableMap.Builder<Integer, HiveType> columnCoercions = ImmutableMap.builder();
+                ImmutableMap.Builder<Integer, HiveTypeName> columnCoercions = ImmutableMap.builder();
                 for (int i = 0; i < min(partitionColumns.size(), tableColumns.size()); i++) {
                     HiveType tableType = tableColumns.get(i).getType();
                     HiveType partitionType = partitionColumns.get(i).getType();
@@ -258,7 +269,7 @@ public class HiveSplitManager
                                     partitionColumns.get(i).getName(),
                                     partitionType));
                         }
-                        columnCoercions.put(i, partitionType);
+                        columnCoercions.put(i, partitionType.getHiveTypeName());
                     }
                 }
 
