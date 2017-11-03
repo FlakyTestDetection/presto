@@ -11,10 +11,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.hive.metastore;
+package com.facebook.presto.hive.metastore.thrift;
 
 import com.facebook.presto.hive.HiveType;
 import com.facebook.presto.hive.HiveUtil;
+import com.facebook.presto.hive.metastore.Database;
+import com.facebook.presto.hive.metastore.ExtendedHiveMetastore;
+import com.facebook.presto.hive.metastore.HiveColumnStatistics;
+import com.facebook.presto.hive.metastore.HiveMetastore;
+import com.facebook.presto.hive.metastore.HivePrivilegeInfo;
+import com.facebook.presto.hive.metastore.Partition;
+import com.facebook.presto.hive.metastore.PrincipalPrivileges;
+import com.facebook.presto.hive.metastore.Table;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaNotFoundException;
 import com.facebook.presto.spi.SchemaTableName;
@@ -24,7 +32,6 @@ import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.PrivilegeGrantInfo;
 
-import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
 import java.util.List;
@@ -33,19 +40,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.facebook.presto.hive.metastore.MetastoreUtil.toMetastoreApiDatabase;
-import static com.facebook.presto.hive.metastore.MetastoreUtil.toMetastoreApiPartition;
-import static com.facebook.presto.hive.metastore.MetastoreUtil.toMetastoreApiPrivilegeGrantInfo;
-import static com.facebook.presto.hive.metastore.MetastoreUtil.toMetastoreApiTable;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.verifyCanDropColumn;
+import static com.facebook.presto.hive.metastore.thrift.ThriftMetastoreUtil.toMetastoreApiDatabase;
+import static com.facebook.presto.hive.metastore.thrift.ThriftMetastoreUtil.toMetastoreApiPartition;
+import static com.facebook.presto.hive.metastore.thrift.ThriftMetastoreUtil.toMetastoreApiPrivilegeGrantInfo;
+import static com.facebook.presto.hive.metastore.thrift.ThriftMetastoreUtil.toMetastoreApiTable;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static java.util.Objects.requireNonNull;
 import static java.util.function.UnaryOperator.identity;
 
-/**
- * Hive Metastore Cache
- */
-@ThreadSafe
 public class BridgingHiveMetastore
         implements ExtendedHiveMetastore
 {
@@ -60,7 +63,7 @@ public class BridgingHiveMetastore
     @Override
     public Optional<Database> getDatabase(String databaseName)
     {
-        return delegate.getDatabase(databaseName).map(MetastoreUtil::fromMetastoreApiDatabase);
+        return delegate.getDatabase(databaseName).map(ThriftMetastoreUtil::fromMetastoreApiDatabase);
     }
 
     @Override
@@ -72,7 +75,7 @@ public class BridgingHiveMetastore
     @Override
     public Optional<Table> getTable(String databaseName, String tableName)
     {
-        return delegate.getTable(databaseName, tableName).map(MetastoreUtil::fromMetastoreApiTable);
+        return delegate.getTable(databaseName, tableName).map(ThriftMetastoreUtil::fromMetastoreApiTable);
     }
 
     @Override
@@ -98,7 +101,7 @@ public class BridgingHiveMetastore
                 statistics.stream()
                         .collect(Collectors.toMap(
                                 ColumnStatisticsObj::getColName,
-                                MetastoreUtil::fromMetastoreApiColumnStatistics)));
+                                ThriftMetastoreUtil::fromMetastoreApiColumnStatistics)));
     }
 
     @Override
@@ -227,7 +230,7 @@ public class BridgingHiveMetastore
     @Override
     public Optional<Partition> getPartition(String databaseName, String tableName, List<String> partitionValues)
     {
-        return delegate.getPartition(databaseName, tableName, partitionValues).map(MetastoreUtil::fromMetastoreApiPartition);
+        return delegate.getPartition(databaseName, tableName, partitionValues).map(ThriftMetastoreUtil::fromMetastoreApiPartition);
     }
 
     @Override
@@ -252,7 +255,7 @@ public class BridgingHiveMetastore
         Map<String, List<String>> partitionNameToPartitionValuesMap = partitionNames.stream()
                 .collect(Collectors.toMap(identity(), HiveUtil::toPartitionValues));
         Map<List<String>, Partition> partitionValuesToPartitionMap = delegate.getPartitionsByNames(databaseName, tableName, partitionNames).stream()
-                .map(MetastoreUtil::fromMetastoreApiPartition)
+                .map(ThriftMetastoreUtil::fromMetastoreApiPartition)
                 .collect(Collectors.toMap(Partition::getValues, identity()));
         ImmutableMap.Builder<String, Optional<Partition>> resultBuilder = ImmutableMap.builder();
         for (Map.Entry<String, List<String>> entry : partitionNameToPartitionValuesMap.entrySet()) {
@@ -269,7 +272,7 @@ public class BridgingHiveMetastore
                 databaseName,
                 tableName,
                 partitions.stream()
-                        .map(MetastoreUtil::toMetastoreApiPartition)
+                        .map(ThriftMetastoreUtil::toMetastoreApiPartition)
                         .collect(Collectors.toList()));
     }
 
