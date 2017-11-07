@@ -403,4 +403,16 @@ public abstract class AbstractMockMetadata
     {
         throw new UnsupportedOperationException();
     }
+
+    @Override
+    public void dropColumn(Session session, TableHandle tableHandle, ColumnHandle column)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean catalogExists(Session session, String catalogName)
+    {
+        throw new UnsupportedOperationException();
+    }
 }
