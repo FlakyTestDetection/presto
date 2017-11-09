@@ -258,7 +258,6 @@ public class BackgroundHiveSplitLoader
                         splittable,
                         session,
                         OptionalInt.empty(),
-                        files.getEffectivePredicate(),
                         files.getColumnCoercions(),
                         getPathDomain(files.getEffectivePredicate()));
                 if (!internalHiveSplit.isPresent()) {
@@ -350,7 +349,6 @@ public class BackgroundHiveSplitLoader
                         splittable,
                         session,
                         OptionalInt.of(bucketNumber),
-                        effectivePredicate,
                         partition.getColumnCoercions(),
                         pathDomain);
                 internalHiveSplit.ifPresent(splitList::add);
@@ -382,7 +380,6 @@ public class BackgroundHiveSplitLoader
                         splittable,
                         session,
                         OptionalInt.of(bucketIndex),
-                        iterator.getEffectivePredicate(),
                         partition.getColumnCoercions(),
                         pathDomain);
                 internalHiveSplit.ifPresent(splitList::add);
@@ -422,7 +419,6 @@ public class BackgroundHiveSplitLoader
                     false,
                     session,
                     OptionalInt.empty(),
-                    effectivePredicate,
                     columnCoercions,
                     pathDomain);
             if (internalHiveSplit.isPresent()) {
@@ -497,7 +493,6 @@ public class BackgroundHiveSplitLoader
             boolean splittable,
             ConnectorSession session,
             OptionalInt bucketNumber,
-            TupleDomain<HiveColumnHandle> effectivePredicate,
             Map<Integer, HiveTypeName> columnCoercions,
             Optional<Domain> pathDomain)
             throws IOException
@@ -507,6 +502,15 @@ public class BackgroundHiveSplitLoader
         }
 
         boolean forceLocalScheduling = HiveSessionProperties.isForceLocalScheduling(session);
+
+        // For empty files, some filesystem (e.g. LocalFileSystem) produce one empty block
+        // while others (e.g. hdfs.DistributedFileSystem) produces no block.
+        // Synthesize an empty block if one does not already exist.
+        if (fileSize == 0 && blockLocations.length == 0) {
+            blockLocations = new BlockLocation[] {new BlockLocation()};
+            // Turn off force local scheduling because hosts list doesn't exist.
+            forceLocalScheduling = false;
+        }
 
         ImmutableList.Builder<InternalHiveBlock> blockBuilder = ImmutableList.builder();
         for (BlockLocation blockLocation : blockLocations) {
@@ -548,17 +552,13 @@ public class BackgroundHiveSplitLoader
 
     private static void checkBlocks(List<InternalHiveBlock> blocks, long start, long length)
     {
+        checkArgument(length >= 0);
         checkArgument(!blocks.isEmpty());
         checkArgument(start == blocks.get(0).getStart());
         checkArgument(start + length == blocks.get(blocks.size() - 1).getEnd());
-    }
-
-    private static boolean overlaps(long xStart, long xLength, long yStart, long yLength)
-    {
-        if (xLength == 0 || yLength == 0) {
-            return false;
+        for (int i = 1; i < blocks.size(); i++) {
+            checkArgument(blocks.get(i - 1).getEnd() == blocks.get(i).getStart());
         }
-        return xStart + xLength > yStart && xStart < yStart + yLength;
     }
 
     private static boolean allBlocksHaveRealAddress(List<InternalHiveBlock> blocks)
@@ -586,15 +586,6 @@ public class BackgroundHiveSplitLoader
         return Arrays.stream(hosts)
                 .map(HostAddress::fromString)
                 .collect(toImmutableList());
-    }
-
-    private static List<HostAddress> toHostAddress(String[] hosts)
-    {
-        ImmutableList.Builder<HostAddress> builder = ImmutableList.builder();
-        for (String host : hosts) {
-            builder.add(HostAddress.fromString(host));
-        }
-        return builder.build();
     }
 
     private static List<HivePartitionKey> getPartitionKeys(Table table, Optional<Partition> partition)
