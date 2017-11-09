@@ -18,7 +18,6 @@ import com.facebook.presto.hive.metastore.Column;
 import com.facebook.presto.hive.metastore.StorageFormat;
 import com.facebook.presto.hive.metastore.Table;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.predicate.Domain;
 import com.facebook.presto.spi.predicate.TupleDomain;
@@ -55,6 +54,7 @@ import static com.facebook.presto.hive.HiveType.HIVE_STRING;
 import static com.facebook.presto.hive.HiveUtil.getRegularColumnHandles;
 import static com.facebook.presto.spi.predicate.TupleDomain.withColumnDomains;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.units.DataSize.Unit.GIGABYTE;
@@ -62,7 +62,7 @@ import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static org.testng.Assert.assertEquals;
 
-public class TestBackgroundSplitLoader
+public class TestBackgroundHiveSplitLoader
 {
     private static final int BUCKET_COUNT = 2;
 
@@ -163,20 +163,41 @@ public class TestBackgroundSplitLoader
         assertEquals(paths.get(0), RETURNED_PATH.toString());
     }
 
+    @Test
+    public void testEmptyFileWithNoBlocks()
+            throws Exception
+    {
+        BackgroundHiveSplitLoader backgroundHiveSplitLoader = backgroundHiveSplitLoader(
+                ImmutableList.of(locatedFileStatusWithNoBlocks(RETURNED_PATH)),
+                TupleDomain.none());
+
+        HiveSplitSource hiveSplitSource = hiveSplitSource(backgroundHiveSplitLoader, TupleDomain.none());
+        backgroundHiveSplitLoader.start(hiveSplitSource);
+
+        List<HiveSplit> splits = drainSplits(hiveSplitSource);
+        assertEquals(splits.size(), 1);
+        assertEquals(splits.get(0).getPath(), RETURNED_PATH.toString());
+        assertEquals(splits.get(0).getLength(), 0);
+    }
+
     private List<String> drain(HiveSplitSource source)
             throws Exception
     {
-        ImmutableList.Builder<String> paths = ImmutableList.builder();
-        while (true) {
-            List<ConnectorSplit> splits = source.getNextBatch(100).get();
-            for (ConnectorSplit connectorSplit : splits) {
-                paths.add(((HiveSplit) connectorSplit).getPath());
-            }
-            if (source.isFinished()) {
-                break;
-            }
+        return drainSplits(source).stream()
+                .map(HiveSplit::getPath)
+                .collect(toImmutableList());
+    }
+
+    private List<HiveSplit> drainSplits(HiveSplitSource source)
+            throws Exception
+    {
+        ImmutableList.Builder<HiveSplit> splits = ImmutableList.builder();
+        while (!source.isFinished()) {
+            source.getNextBatch(100).get().stream()
+                    .map(HiveSplit.class::cast)
+                    .forEach(splits::add);
         }
-        return paths.build();
+        return splits.build();
     }
 
     private static BackgroundHiveSplitLoader backgroundHiveSplitLoader(
@@ -282,6 +303,23 @@ public class TestBackgroundSplitLoader
                 null,
                 path,
                 new BlockLocation[] {new BlockLocation()});
+    }
+
+    private static LocatedFileStatus locatedFileStatusWithNoBlocks(Path path)
+    {
+        return new LocatedFileStatus(
+                0L,
+                false,
+                0,
+                0L,
+                0L,
+                0L,
+                null,
+                null,
+                null,
+                null,
+                path,
+                new BlockLocation[] {});
     }
 
     private static class TestingDirectoryLister
