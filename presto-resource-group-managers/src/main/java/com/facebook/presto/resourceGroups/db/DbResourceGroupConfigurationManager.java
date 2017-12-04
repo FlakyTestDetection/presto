@@ -256,8 +256,8 @@ public class DbResourceGroupConfigurationManager
                 new SelectorSpec(
                         selectorRecord.getUserRegex(),
                         selectorRecord.getSourceRegex(),
+                        selectorRecord.getQueryType(),
                         selectorRecord.getClientTags(),
-                        Optional.empty(),
                         resourceGroupIdTemplateMap.get(selectorRecord.getResourceGroupId()))
         ).collect(Collectors.toList());
         ManagerSpec managerSpec = new ManagerSpec(rootGroups, selectors, getCpuQuotaPeriodFromDb());
