@@ -56,6 +56,8 @@ public class TaskStatus
 
     private final int queuedPartitionedDrivers;
     private final int runningPartitionedDrivers;
+    private final boolean outputBufferFull;
+    private final DataSize physicalWrittenDataSize;
     private final DataSize memoryReservation;
 
     private final List<ExecutionFailureInfo> failures;
@@ -70,6 +72,8 @@ public class TaskStatus
             @JsonProperty("failures") List<ExecutionFailureInfo> failures,
             @JsonProperty("queuedPartitionedDrivers") int queuedPartitionedDrivers,
             @JsonProperty("runningPartitionedDrivers") int runningPartitionedDrivers,
+            @JsonProperty("outputBufferFull") boolean outputBufferFull,
+            @JsonProperty("physicalWrittenDataSize") DataSize physicalWrittenDataSize,
             @JsonProperty("memoryReservation") DataSize memoryReservation)
     {
         this.taskId = requireNonNull(taskId, "taskId is null");
@@ -86,6 +90,10 @@ public class TaskStatus
 
         checkArgument(runningPartitionedDrivers >= 0, "runningPartitionedDrivers must be positive");
         this.runningPartitionedDrivers = runningPartitionedDrivers;
+
+        this.outputBufferFull = outputBufferFull;
+
+        this.physicalWrittenDataSize = requireNonNull(physicalWrittenDataSize, "physicalWrittenDataSize is null");
 
         this.memoryReservation = requireNonNull(memoryReservation, "memoryReservation is null");
         this.failures = ImmutableList.copyOf(requireNonNull(failures, "failures is null"));
@@ -146,6 +154,18 @@ public class TaskStatus
     }
 
     @JsonProperty
+    public DataSize getPhysicalWrittenDataSize()
+    {
+        return physicalWrittenDataSize;
+    }
+
+    @JsonProperty
+    public boolean isOutputBufferFull()
+    {
+        return outputBufferFull;
+    }
+
+    @JsonProperty
     public DataSize getMemoryReservation()
     {
         return memoryReservation;
@@ -162,7 +182,19 @@ public class TaskStatus
 
     public static TaskStatus initialTaskStatus(TaskId taskId, URI location, String nodeId)
     {
-        return new TaskStatus(taskId, "", MIN_VERSION, PLANNED, location, nodeId, ImmutableList.of(), 0, 0, new DataSize(0, BYTE));
+        return new TaskStatus(
+                taskId,
+                "",
+                MIN_VERSION,
+                PLANNED,
+                location,
+                nodeId,
+                ImmutableList.of(),
+                0,
+                0,
+                false,
+                new DataSize(0, BYTE),
+                new DataSize(0, BYTE));
     }
 
     public static TaskStatus failWith(TaskStatus taskStatus, TaskState state, List<ExecutionFailureInfo> exceptions)
@@ -177,6 +209,8 @@ public class TaskStatus
                 exceptions,
                 taskStatus.getQueuedPartitionedDrivers(),
                 taskStatus.getRunningPartitionedDrivers(),
+                taskStatus.isOutputBufferFull(),
+                taskStatus.getPhysicalWrittenDataSize(),
                 taskStatus.getMemoryReservation());
     }
 }
