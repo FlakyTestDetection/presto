@@ -13,25 +13,19 @@
  */
 package com.facebook.presto.verifier;
 
-import io.airlift.airline.Cli;
-import io.airlift.airline.Help;
+import javax.inject.Qualifier;
 
-public class PrestoVerifier
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+
+import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.PARAMETER;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+@Retention(RUNTIME)
+@Target({FIELD, PARAMETER, METHOD})
+@Qualifier
+public @interface SupportedEventClients
 {
-    private PrestoVerifier()
-    {
-    }
-
-    public static void main(String[] args)
-            throws Exception
-    {
-        Cli<Runnable> verifierParser = Cli.<Runnable>builder("verifier")
-                .withDescription("Presto Verifier")
-                .withDefaultCommand(Help.class)
-                .withCommand(Help.class)
-                .withCommand(VerifyCommand.class)
-                .build();
-
-        verifierParser.parse(args).run();
-    }
 }
