@@ -18,29 +18,29 @@ import com.facebook.presto.spi.SchemaTableName;
 
 import java.util.Optional;
 
-import static com.facebook.presto.hive.HiveErrorCode.HIVE_PARTITION_READ_ONLY;
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_PARTITION_NOT_READABLE;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_TABLE_READ_ONLY;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
-public class HiveReadOnlyException
+public class HiveNotReadableException
         extends PrestoException
 {
     private final SchemaTableName tableName;
     private final Optional<String> partition;
 
-    public HiveReadOnlyException(SchemaTableName tableName, Optional<String> partition)
+    public HiveNotReadableException(SchemaTableName tableName, Optional<String> partition, String message)
     {
-        super(partition.isPresent() ? HIVE_PARTITION_READ_ONLY : HIVE_TABLE_READ_ONLY, composeMessage(tableName, partition));
+        super(partition.isPresent() ? HIVE_PARTITION_NOT_READABLE : HIVE_TABLE_READ_ONLY, composeMessage(tableName, partition, message));
         this.tableName = requireNonNull(tableName, "tableName is null");
         this.partition = requireNonNull(partition, "partition is null");
     }
 
-    private static String composeMessage(SchemaTableName tableName, Optional<String> partition)
+    private static String composeMessage(SchemaTableName tableName, Optional<String> partition, String message)
     {
         return partition.isPresent()
-                ? format("Table '%s' partition '%s' is read-only", tableName, partition.get())
-                : format("Table '%s' is read-only", tableName);
+                ? format("Table '%s' partition '%s' is not readable: %s", tableName, partition.get(), message)
+                : format("Table '%s' is not readable: %s", tableName, message);
     }
 
     public SchemaTableName getTableName()
