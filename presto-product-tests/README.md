@@ -298,7 +298,17 @@ environment variables:
 export PRESTO_SERVER_DIR=/tmp/presto-server-dir      #unpacked presto-server.tar.gz
 export PRESTO_CLI_JAR=/tmp/artifacts/presto-cli-executable.jar
 export PRODUCT_TESTS_JAR=/tmp/artifacts/presto-product-tests-executable.jar
+export PRESTO_JDBC_DRIVER_JAR=libs/PrestoJDBC42.jar
+export PRESTO_JDBC_DRIVER_CLASS=com.teradata.presto.jdbc42.Driver
 presto-product-tests/bin/run_on_docker.sh multinode -x quarantine,big_query,profile_specific_tests
+```
+
+To override tempto configuration put a new file into `presto-product-tests/conf/EXTRA_TEMPTO_CONFIG.yml` 
+and then set environment variable like below. Your configuration file will be loaded as last and so 
+it is able to override any configuration entry.
+
+```
+export TEMPTO_EXTRA_CONFIG_FILE=/docker/volumes/conf/EXTRA_TEMPTO_CONFIG.yml
 ```
 
 All of the variables are optional and fall back to local sources / build artifacts if unspecified.
