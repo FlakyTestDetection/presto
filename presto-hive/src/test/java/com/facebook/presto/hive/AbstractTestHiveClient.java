@@ -355,7 +355,6 @@ public abstract class AbstractTestHiveClient
     protected ConnectorTableLayout tableLayout;
     protected ConnectorTableLayout unpartitionedTableLayout;
     protected ConnectorTableLayoutHandle invalidTableLayoutHandle;
-    protected ConnectorTableLayoutHandle emptyTableLayoutHandle;
 
     protected DateTimeZone timeZone;
 
@@ -407,12 +406,12 @@ public abstract class AbstractTestHiveClient
         invalidClientId = "hive";
         invalidTableHandle = new HiveTableHandle(database, INVALID_TABLE);
         invalidTableLayoutHandle = new HiveTableLayoutHandle(
+                invalidTable,
                 ImmutableList.of(),
                 ImmutableList.of(new HivePartition(invalidTable, "unknown", ImmutableMap.of(), ImmutableList.of())),
                 TupleDomain.all(),
                 TupleDomain.all(),
                 Optional.empty());
-        emptyTableLayoutHandle = new HiveTableLayoutHandle(ImmutableList.of(), ImmutableList.of(), TupleDomain.none(), TupleDomain.none(), Optional.empty());
 
         dsColumn = new HiveColumnHandle("ds", HIVE_STRING, parseTypeSignature(StandardTypes.VARCHAR), -1, PARTITION_KEY, Optional.empty());
         fileFormatColumn = new HiveColumnHandle("file_format", HIVE_STRING, parseTypeSignature(StandardTypes.VARCHAR), -1, PARTITION_KEY, Optional.empty());
@@ -458,7 +457,7 @@ public abstract class AbstractTestHiveClient
         partitionCount = partitions.size();
         tupleDomain = TupleDomain.fromFixedValues(ImmutableMap.of(dsColumn, NullableValue.of(createUnboundedVarcharType(), utf8Slice("2012-12-29"))));
         tableLayout = new ConnectorTableLayout(
-                new HiveTableLayoutHandle(partitionColumns, partitions, tupleDomain, tupleDomain, Optional.empty()),
+                new HiveTableLayoutHandle(tablePartitionFormat, partitionColumns, partitions, tupleDomain, tupleDomain, Optional.empty()),
                 Optional.empty(),
                 TupleDomain.withColumnDomains(ImmutableMap.of(
                         dsColumn, Domain.create(ValueSet.ofRanges(Range.equal(createUnboundedVarcharType(), utf8Slice("2012-12-29"))), false),
@@ -485,7 +484,7 @@ public abstract class AbstractTestHiveClient
                                 dummyColumn, Domain.create(ValueSet.ofRanges(Range.equal(INTEGER, 4L)), false)))))),
                 ImmutableList.of());
         List<HivePartition> unpartitionedPartitions = ImmutableList.of(new HivePartition(tableUnpartitioned, ImmutableList.of()));
-        unpartitionedTableLayout = new ConnectorTableLayout(new HiveTableLayoutHandle(ImmutableList.of(), unpartitionedPartitions, TupleDomain.all(), TupleDomain.all(), Optional.empty()));
+        unpartitionedTableLayout = new ConnectorTableLayout(new HiveTableLayoutHandle(tableUnpartitioned, ImmutableList.of(), unpartitionedPartitions, TupleDomain.all(), TupleDomain.all(), Optional.empty()));
         timeZone = DateTimeZone.forTimeZone(TimeZone.getTimeZone(timeZoneId));
     }
 
@@ -1187,17 +1186,6 @@ public abstract class AbstractTestHiveClient
     }
 
     @Test
-    public void testGetPartitionSplitsEmpty()
-            throws Exception
-    {
-        try (Transaction transaction = newTransaction()) {
-            ConnectorSplitSource splitSource = splitManager.getSplits(transaction.getTransactionHandle(), newSession(), emptyTableLayoutHandle, UNGROUPED_SCHEDULING);
-            // fetch full list
-            getSplitCount(splitSource);
-        }
-    }
-
-    @Test
     public void testGetPartitionTableOffline()
             throws Exception
     {
@@ -1255,9 +1243,7 @@ public abstract class AbstractTestHiveClient
             ColumnHandle dsColumn = metadata.getColumnHandles(session, tableHandle).get("ds");
             assertNotNull(dsColumn);
 
-            Domain domain = Domain.singleValue(createUnboundedVarcharType(), utf8Slice("2012-12-30"));
-            TupleDomain<ColumnHandle> tupleDomain = TupleDomain.withColumnDomains(ImmutableMap.of(dsColumn, domain));
-            List<ConnectorTableLayoutResult> tableLayoutResults = metadata.getTableLayouts(session, tableHandle, new Constraint<>(tupleDomain, bindings -> true), Optional.empty());
+            List<ConnectorTableLayoutResult> tableLayoutResults = metadata.getTableLayouts(session, tableHandle, Constraint.alwaysTrue(), Optional.empty());
             try {
                 getSplitCount(splitManager.getSplits(transaction.getTransactionHandle(), session, getOnlyElement(tableLayoutResults).getTableLayout().getHandle(), UNGROUPED_SCHEDULING));
                 fail("Expected HiveNotReadableException");
