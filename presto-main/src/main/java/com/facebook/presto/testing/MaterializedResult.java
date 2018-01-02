@@ -38,8 +38,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.slice.Slices;
 
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -352,7 +350,7 @@ public class MaterializedResult
                 convertedValue = LocalDate.ofEpochDay(((SqlDate) prestoValue).getDays());
             }
             else if (prestoValue instanceof SqlTime) {
-                convertedValue = new Time(((SqlTime) prestoValue).getMillisUtc());
+                convertedValue = LocalTime.ofNanoOfDay(MILLISECONDS.toNanos(((SqlTime) prestoValue).getMillisUtc()));
             }
             else if (prestoValue instanceof SqlTimeWithTimeZone) {
                 // Political timezone cannot be represented in OffsetTime and there isn't any better representation.
@@ -363,7 +361,9 @@ public class MaterializedResult
                         zone);
             }
             else if (prestoValue instanceof SqlTimestamp) {
-                convertedValue = new Timestamp(((SqlTimestamp) prestoValue).getMillisUtc());
+                convertedValue = Instant.ofEpochMilli(((SqlTimestamp) prestoValue).getMillisUtc())
+                        .atZone(ZoneOffset.UTC)
+                        .toLocalDateTime();
             }
             else if (prestoValue instanceof SqlTimestampWithTimeZone) {
                 convertedValue = Instant.ofEpochMilli(((SqlTimestampWithTimeZone) prestoValue).getMillisUtc())
