@@ -11,11 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.execution;
+package com.facebook.presto.memory.context;
 
-public interface SystemMemoryUsageListener
+import com.google.common.util.concurrent.ListenableFuture;
+
+public interface MemoryReservationHandler
 {
-    // TODO: Remove this class and migrate to use AbstractAggregatedMemoryContext
+    /**
+     * @return a future that signals the caller to block before reserving more memory.
+     */
+    ListenableFuture<?> reserveMemory(long delta);
 
-    void updateSystemMemoryUsage(long deltaMemoryInBytes);
+    /**
+     * Try reserving the given number of bytes.
+     * @return true if reservation is successful, false otherwise.
+     */
+    boolean tryReserveMemory(long delta);
 }
