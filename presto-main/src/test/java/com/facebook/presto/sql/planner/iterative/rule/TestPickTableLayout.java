@@ -17,9 +17,9 @@ import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.metadata.TableLayoutHandle;
 import com.facebook.presto.spi.predicate.Domain;
+import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.iterative.rule.test.BaseRuleTest;
-import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.testing.TestingTransactionHandle;
 import com.facebook.presto.tpch.TpchColumnHandle;
 import com.facebook.presto.tpch.TpchTableHandle;
@@ -41,10 +41,6 @@ import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.ex
 public class TestPickTableLayout
         extends BaseRuleTest
 {
-    private static final TableLayoutHandle DUMMY_TABLE_LAYOUT_HANDLE = new TableLayoutHandle(new ConnectorId("tpch"),
-            TestingTransactionHandle.create(),
-            new TpchTableLayoutHandle(new TpchTableHandle("local", "nation", 1.0), Optional.empty()));
-
     private PickTableLayout pickTableLayout;
     private TableHandle nationTableHandle;
     private TableLayoutHandle nationTableLayoutHandle;
@@ -82,13 +78,12 @@ public class TestPickTableLayout
                         nationTableHandle,
                         ImmutableList.of(p.symbol("nationkey", BIGINT)),
                         ImmutableMap.of(p.symbol("nationkey", BIGINT), new TpchColumnHandle("nationkey", BIGINT)),
-                        BooleanLiteral.TRUE_LITERAL,
-                        Optional.of(DUMMY_TABLE_LAYOUT_HANDLE)))
+                        Optional.of(nationTableLayoutHandle)))
                 .doesNotFire();
     }
 
     @Test
-    public void doesNotFireIfTableScanHasConstraint()
+    public void doesNotFireIfTableScanNonDefaultConstraint()
     {
         tester().assertThat(pickTableLayout.pickTableLayoutForPredicate())
                 .on(p -> p.filter(expression("nationkey = BIGINT '44'"),
@@ -96,8 +91,22 @@ public class TestPickTableLayout
                                 nationTableHandle,
                                 ImmutableList.of(p.symbol("nationkey", BIGINT)),
                                 ImmutableMap.of(p.symbol("nationkey", BIGINT), new TpchColumnHandle("nationkey", BIGINT)),
-                                expression("nationkey = BIGINT '44'"),
-                                Optional.of(nationTableLayoutHandle))))
+                                Optional.of(nationTableLayoutHandle),
+                                TupleDomain.none())))
+                .doesNotFire();
+    }
+
+    @Test
+    public void doesNotFireIfRuleNotChangePlan()
+    {
+        tester().assertThat(pickTableLayout.pickTableLayoutForPredicate())
+                .on(p -> p.filter(expression("nationkey % 17 =  BIGINT '44' AND nationkey % 15 =  BIGINT '43'"),
+                        p.tableScan(
+                                nationTableHandle,
+                                ImmutableList.of(p.symbol("nationkey", BIGINT)),
+                                ImmutableMap.of(p.symbol("nationkey", BIGINT), new TpchColumnHandle("nationkey", BIGINT)),
+                                Optional.of(nationTableLayoutHandle),
+                                TupleDomain.all())))
                 .doesNotFire();
     }
 
@@ -147,7 +156,6 @@ public class TestPickTableLayout
                                 nationTableHandle,
                                 ImmutableList.of(p.symbol("nationkey", BIGINT)),
                                 ImmutableMap.of(p.symbol("nationkey", BIGINT), new TpchColumnHandle("nationkey", BIGINT)),
-                                BooleanLiteral.TRUE_LITERAL,
                                 Optional.of(nationTableLayoutHandle))))
                 .matches(
                         filter("nationkey = BIGINT '44'",
