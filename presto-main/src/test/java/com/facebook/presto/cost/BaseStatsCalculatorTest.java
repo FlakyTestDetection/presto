@@ -11,28 +11,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.tests;
+package com.facebook.presto.cost;
 
-import com.facebook.presto.spi.QueryId;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 
-public class ResultWithQueryId<T>
+public abstract class BaseStatsCalculatorTest
 {
-    private final QueryId queryId;
-    private final T result;
+    private StatsCalculatorTester tester;
 
-    public ResultWithQueryId(QueryId queryId, T result)
+    @BeforeMethod
+    public void setUp()
     {
-        this.queryId = queryId;
-        this.result = result;
+        tester = new StatsCalculatorTester();
     }
 
-    public QueryId getQueryId()
+    @AfterMethod
+    public void tearDown()
     {
-        return queryId;
+        tester.close();
+        tester = null;
     }
 
-    public T getResult()
+    protected StatsCalculatorTester tester()
     {
-        return result;
+        return tester;
     }
 }

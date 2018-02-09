@@ -14,6 +14,7 @@
 package com.facebook.presto.cost;
 
 import java.util.Objects;
+import java.util.function.Function;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -24,6 +25,14 @@ import static java.lang.String.format;
 public class SymbolStatsEstimate
 {
     public static final SymbolStatsEstimate UNKNOWN_STATS = SymbolStatsEstimate.builder().build();
+
+    public static final SymbolStatsEstimate ZERO_STATS = SymbolStatsEstimate.builder()
+            .setLowValue(NaN)
+            .setHighValue(NaN)
+            .setDistinctValuesCount(0)
+            .setNullsFraction(1)
+            .setAverageRowSize(0)
+            .build();
 
     // for now we support only types which map to real domain naturally and keep low/high value as double in stats.
     private final double lowValue;
@@ -80,6 +89,11 @@ public class SymbolStatsEstimate
         return nullsFraction;
     }
 
+    public StatisticRange statisticRange()
+    {
+        return new StatisticRange(lowValue, highValue, distinctValuesCount);
+    }
+
     public double getValuesFraction()
     {
         return 1.0 - nullsFraction;
@@ -93,6 +107,26 @@ public class SymbolStatsEstimate
     public double getDistinctValuesCount()
     {
         return distinctValuesCount;
+    }
+
+    public SymbolStatsEstimate mapLowValue(Function<Double, Double> mappingFunction)
+    {
+        return buildFrom(this).setLowValue(mappingFunction.apply(lowValue)).build();
+    }
+
+    public SymbolStatsEstimate mapHighValue(Function<Double, Double> mappingFunction)
+    {
+        return buildFrom(this).setHighValue(mappingFunction.apply(highValue)).build();
+    }
+
+    public SymbolStatsEstimate mapNullsFraction(Function<Double, Double> mappingFunction)
+    {
+        return buildFrom(this).setNullsFraction(mappingFunction.apply(nullsFraction)).build();
+    }
+
+    public SymbolStatsEstimate mapDistinctValuesCount(Function<Double, Double> mappingFunction)
+    {
+        return buildFrom(this).setDistinctValuesCount(mappingFunction.apply(distinctValuesCount)).build();
     }
 
     @Override
@@ -151,6 +185,13 @@ public class SymbolStatsEstimate
         private double nullsFraction = NaN;
         private double averageRowSize = NaN;
         private double distinctValuesCount = NaN;
+
+        public Builder setStatisticsRange(StatisticRange range)
+        {
+            return setLowValue(range.getLow())
+                    .setHighValue(range.getHigh())
+                    .setDistinctValuesCount(range.getDistinctValuesCount());
+        }
 
         public Builder setLowValue(double lowValue)
         {
