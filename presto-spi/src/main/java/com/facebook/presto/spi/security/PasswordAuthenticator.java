@@ -11,21 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.server.security.util.jndi;
+package com.facebook.presto.spi.security;
 
-import javax.naming.NamingException;
-import javax.naming.directory.InitialDirContext;
+import java.security.Principal;
 
-import java.util.Hashtable;
-import java.util.Map;
-
-public final class JndiUtils
+public interface PasswordAuthenticator
 {
-    private JndiUtils() {}
-
-    public static InitialDirContext getInitialDirContext(Map<String, String> environment)
-            throws NamingException
-    {
-        return new InitialDirContext(new Hashtable<>(environment));
-    }
+    /**
+     * Authenticate the provided user and password.
+     *
+     * @return the authenticated entity
+     * @throws AccessDeniedException if not allowed
+     */
+    Principal createAuthenticatedPrincipal(String user, String password);
 }
